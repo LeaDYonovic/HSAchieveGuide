@@ -1,0 +1,25 @@
+{
+    "generatedAt":  "2026-08-14T17:08:17+09:00",
+    "source":  "Hearthstone ACHIEVEMENT DBF tables",
+    "filters":  {
+                    "included":  [
+                                     "Use only the ACHIEVEMENT*.json table family.",
+                                     "Keep achievements where m_enabled = 1.",
+                                     "Keep achievements whose section exists in ACHIEVEMENT_SECTION_ITEM.json.",
+                                     "Keep only categories, subcategories, and sections that still contain kept achievements."
+                                 ],
+                    "excluded":  [
+                                     "Legacy ACHIEVE*.json tables.",
+                                     "Disabled records from ACHIEVEMENT.json.",
+                                     "Enabled ACHIEVEMENT.json records that are not connected to the current hierarchy."
+                                 ]
+                },
+    "counts":  {
+                   "categories":  5,
+                   "subcategories":  77,
+                   "sections":  462,
+                   "achievements":  5438,
+                   "disabledAchievements":  27,
+                   "enabledButUnmappedAchievements":  6
+               }
+}
