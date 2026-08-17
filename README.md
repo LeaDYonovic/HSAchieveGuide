@@ -10,6 +10,8 @@ Windows 炉石传说成就查看与管理工具。它把官方成就层级、账
 ## 主要功能
 
 - 按官方分类、三级分类和职业查看成就完成度。
+- 将官方“经典（已停运）”成就单独标记为“停用”，不列入未完成；
+  Firestone 原始完成数和账号当前成就点数保持不变。
 - 查看成就进度、阶段要求、成就点数和关联卡牌收藏。
 - 查看、筛选个人卡牌收藏。
 - 显示本地社区攻略、卡组代码和原始来源链接。
@@ -19,9 +21,10 @@ Windows 炉石传说成就查看与管理工具。它把官方成就层级、账
 
 ## 运行要求
 
-- Windows 10 或 Windows 11。
+- 64 位 Windows 10 或 Windows 11。
 - .NET Framework 4.8（多数 Windows 10/11 电脑已包含或可在系统功能中启用）。
 - 已安装并运行 Firestone；读取账号实时数据时建议同时启动炉石传说。
+- 运行时导出器使用 64 位架构，以匹配当前 Firestone/Overwolf 模组。
 
 ## 使用方法
 
@@ -98,4 +101,3 @@ src/ExportMindVisionAchievements.cs
 - [Zero to Heroes / Firestone](https://github.com/Zero-to-Heroes/firestone)
   提供的优秀炉石伴侣工具及数据基础。
 - 本工具由社区个人整理与发布，开发过程中使用了 OpenAI 提供的辅助工具。
-

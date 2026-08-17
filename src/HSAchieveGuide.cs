@@ -1324,7 +1324,7 @@ internal sealed class FirestoneDataViewer : Form
 		WriteStartupTrace("snapshot: begin");
 		progress?.Invoke("刷新运行时导出...");
 		MindVisionExportRefreshResult mindVisionExportRefreshResult = TryRefreshMindVisionExport(progress);
-		WriteStartupTrace("snapshot: export-status=" + SafeTraceText(mindVisionExportRefreshResult?.StatusLabel));
+		WriteStartupTrace("snapshot: export-status=" + SafeTraceText(mindVisionExportRefreshResult?.StatusLabel) + ", details=" + SafeTraceText(mindVisionExportRefreshResult?.Details) + ", output=" + SafeTraceText(mindVisionExportRefreshResult?.LatestOutputPath));
 		progress?.Invoke("加载卡牌元数据...");
 		string metadataPath;
 		IReadOnlyDictionary<string, CardMetadataRow> metadata = LoadCardMetadata(out metadataPath);
@@ -2305,6 +2305,7 @@ internal sealed class FirestoneDataViewer : Form
 		comboBox.Items.Add("全部");
 		comboBox.Items.Add("已完成");
 		comboBox.Items.Add("未完成");
+		comboBox.Items.Add("停用");
 		comboBox.SelectedIndex = 0;
 		if (refreshAction != null)
 		{
@@ -3548,8 +3549,8 @@ internal sealed class FirestoneDataViewer : Form
 		IList<OfficialAchievementExportRow> list = achievements ?? new List<OfficialAchievementExportRow>();
 		OfficialRuntimeCategoryNumbers officialRuntimeCategoryNumbers = runtimeStats?.Stats;
 		int num = list.Sum((OfficialAchievementExportRow item) => item?.Reference?.Points ?? 0);
-		int num2 = list.Where(IsOfficialAchievementCompleted).Sum((OfficialAchievementExportRow item) => item?.Reference?.Points ?? 0);
-		int num3 = list.Count(IsOfficialAchievementCompleted);
+		int num2 = list.Where(IsOfficialAchievementActuallyCompleted).Sum((OfficialAchievementExportRow item) => item?.Reference?.Points ?? 0);
+		int num3 = list.Count(IsOfficialAchievementActuallyCompleted);
 		return new OfficialRuntimeCategoryStats
 		{
 			Id = rootCategory?.Id ?? 0,
@@ -4706,7 +4707,11 @@ internal sealed class FirestoneDataViewer : Form
 		}
 		else if (filter == "未完成")
 		{
-			enumerable = enumerable.Where((OfficialAchievementExportRow row) => !IsOfficialAchievementCompleted(row));
+			enumerable = enumerable.Where(IsOfficialAchievementOutstanding);
+		}
+		else if (filter == "停用")
+		{
+			enumerable = enumerable.Where(IsOfficialAchievementRetired);
 		}
 		return enumerable.ToList();
 	}
@@ -4722,6 +4727,10 @@ internal sealed class FirestoneDataViewer : Form
 		{
 			enumerable = enumerable.Where((AchievementProgressRow row) => !row.Completed);
 		}
+		else if (filter == "停用")
+		{
+			enumerable = Enumerable.Empty<AchievementProgressRow>();
+		}
 		return enumerable.ToList();
 	}
 
@@ -4733,21 +4742,22 @@ internal sealed class FirestoneDataViewer : Form
 				orderby row.Id
 				let filteredAchievements = ApplyOfficialAchievementCompletionFilter(row.Achievements ?? new List<OfficialAchievementExportRow>(), completionFilter)
 				where filteredAchievements.Count > 0 || completionFilter == "全部"
-				let stats = row.RuntimeStats?.Stats
+				let stats = (completionFilter == "全部") ? row.RuntimeStats?.Stats : null
+				let filteredCompletedCount = CountOfficialAchievementCompletionsForFilter(filteredAchievements, completionFilter)
 				select new AchievementCategoryViewRow
 				{
 					Mode = AchievementCategoryMode.Official,
 					Key = row.Id.ToString(CultureInfo.InvariantCulture),
 					Name = (row.Name ?? GetOfficialCategoryDisplayName(row.Id)),
-					CompletedCount = ((stats != null) ? stats.CompletedAchievements : filteredAchievements.Count(IsOfficialAchievementCompleted)),
+					CompletedCount = ((stats != null) ? stats.CompletedAchievements : filteredCompletedCount),
 					TotalCount = ((stats != null) ? stats.TotalAchievements : filteredAchievements.Count),
-					CountCompletionRate = FormatCompletionRate((stats != null) ? stats.CompletedAchievements : filteredAchievements.Count(IsOfficialAchievementCompleted), (stats != null) ? stats.TotalAchievements : filteredAchievements.Count),
-					CompletionRate = FormatCompletionRate((stats != null) ? stats.Points : filteredAchievements.Where((OfficialAchievementExportRow item) => IsOfficialAchievementCompleted(item)).Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0), (stats != null) ? stats.AvailablePoints : filteredAchievements.Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0)),
-					PointsProgress = FormatProgress((stats != null) ? stats.Points : filteredAchievements.Where(IsOfficialAchievementCompleted).Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0), (stats != null) ? stats.AvailablePoints : filteredAchievements.Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0)),
-					PointCompletionRate = FormatCompletionRate((stats != null) ? stats.Points : filteredAchievements.Where((OfficialAchievementExportRow item) => IsOfficialAchievementCompleted(item)).Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0), (stats != null) ? stats.AvailablePoints : filteredAchievements.Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0)),
-					CompletionRateDiff = string.Format(CultureInfo.InvariantCulture, "{0:+0.#;-0.#;0}%", (((stats != null) ? ((stats.AvailablePoints > 0) ? ((double)stats.Points * 100.0 / (double)stats.AvailablePoints) : 0.0) : ((filteredAchievements.Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0) > 0) ? ((double)filteredAchievements.Where((OfficialAchievementExportRow item) => IsOfficialAchievementCompleted(item)).Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0) * 100.0 / (double)filteredAchievements.Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0)) : 0.0)) - ((stats != null) ? ((stats.TotalAchievements > 0) ? ((double)stats.CompletedAchievements * 100.0 / (double)stats.TotalAchievements) : 0.0) : ((filteredAchievements.Count > 0) ? ((double)filteredAchievements.Count(IsOfficialAchievementCompleted) * 100.0 / (double)filteredAchievements.Count) : 0.0)))),
+					CountCompletionRate = FormatCompletionRate((stats != null) ? stats.CompletedAchievements : filteredCompletedCount, (stats != null) ? stats.TotalAchievements : filteredAchievements.Count),
+					CompletionRate = FormatCompletionRate((stats != null) ? stats.Points : filteredAchievements.Where(IsOfficialAchievementActuallyCompleted).Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0), (stats != null) ? stats.AvailablePoints : filteredAchievements.Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0)),
+					PointsProgress = FormatProgress((stats != null) ? stats.Points : filteredAchievements.Where(IsOfficialAchievementActuallyCompleted).Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0), (stats != null) ? stats.AvailablePoints : filteredAchievements.Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0)),
+					PointCompletionRate = FormatCompletionRate((stats != null) ? stats.Points : filteredAchievements.Where(IsOfficialAchievementActuallyCompleted).Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0), (stats != null) ? stats.AvailablePoints : filteredAchievements.Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0)),
+					CompletionRateDiff = string.Format(CultureInfo.InvariantCulture, "{0:+0.#;-0.#;0}%", (((stats != null) ? ((stats.AvailablePoints > 0) ? ((double)stats.Points * 100.0 / (double)stats.AvailablePoints) : 0.0) : ((filteredAchievements.Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0) > 0) ? ((double)filteredAchievements.Where(IsOfficialAchievementActuallyCompleted).Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0) * 100.0 / (double)filteredAchievements.Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0)) : 0.0)) - ((stats != null) ? ((stats.TotalAchievements > 0) ? ((double)stats.CompletedAchievements * 100.0 / (double)stats.TotalAchievements) : 0.0) : ((filteredAchievements.Count > 0) ? ((double)filteredCompletedCount * 100.0 / (double)filteredAchievements.Count) : 0.0)))),
 					TotalPoints = ((stats != null) ? stats.AvailablePoints : filteredAchievements.Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0)),
-					Points = ((stats != null) ? stats.Points : filteredAchievements.Where(IsOfficialAchievementCompleted).Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0)),
+					Points = ((stats != null) ? stats.Points : filteredAchievements.Where(IsOfficialAchievementActuallyCompleted).Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0)),
 					AvailablePoints = ((stats != null) ? stats.AvailablePoints : filteredAchievements.Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0)),
 					AttachedCount = filteredAchievements.Count,
 					AttachedAchievements = filteredAchievements,
@@ -4805,7 +4815,7 @@ internal sealed class FirestoneDataViewer : Form
 				select item).ToList();
 			int completedCount = list2.Count(IsOfficialAchievementCompleted);
 			int availablePoints = list2.Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0);
-			int points = list2.Where(IsOfficialAchievementCompleted).Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0);
+			int points = list2.Where(IsOfficialAchievementActuallyCompleted).Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0);
 			string name = ((officialCategoryPathInfo.RootCategory != null) ? officialCategoryPathInfo.RootCategory.Name : "未分类") + " / " + ((officialCategoryPathInfo.PrimaryCategory != null) ? officialCategoryPathInfo.PrimaryCategory.Name : "未分类");
 			return new AchievementCategoryViewRow
 			{
@@ -4846,19 +4856,19 @@ internal sealed class FirestoneDataViewer : Form
 				Mode = AchievementCategoryMode.Class,
 				Key = @group.Key,
 				Name = @group.Key,
-				CompletedCount = @group.Select((ClassAchievementEntry entry) => entry.Achievement).Count(IsOfficialAchievementCompleted),
+				CompletedCount = CountOfficialAchievementCompletionsForFilter(@group.Select((ClassAchievementEntry entry) => entry.Achievement), completionFilter),
 				TotalCount = @group.Count(),
-				Points = @group.Select((ClassAchievementEntry entry) => entry.Achievement).Where(IsOfficialAchievementCompleted).Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0),
+				Points = @group.Select((ClassAchievementEntry entry) => entry.Achievement).Where(IsOfficialAchievementActuallyCompleted).Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0),
 				AvailablePoints = @group.Select((ClassAchievementEntry entry) => entry.Achievement).Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0),
-				CompletionRate = FormatCompletionRate(@group.Select((ClassAchievementEntry entry) => entry.Achievement).Count(IsOfficialAchievementCompleted), @group.Count()),
-				PointsProgress = FormatProgress(@group.Select((ClassAchievementEntry entry) => entry.Achievement).Where(IsOfficialAchievementCompleted).Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0), @group.Select((ClassAchievementEntry entry) => entry.Achievement).Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0)),
+				CompletionRate = FormatCompletionRate(CountOfficialAchievementCompletionsForFilter(@group.Select((ClassAchievementEntry entry) => entry.Achievement), completionFilter), @group.Count()),
+				PointsProgress = FormatProgress(@group.Select((ClassAchievementEntry entry) => entry.Achievement).Where(IsOfficialAchievementActuallyCompleted).Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0), @group.Select((ClassAchievementEntry entry) => entry.Achievement).Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0)),
 				TotalPoints = @group.Select((ClassAchievementEntry entry) => entry.Achievement).Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0),
 				AttachedCount = @group.Count(),
 				AttachedAchievements = (from entry in @group
 					let item = entry.Achievement
 					orderby IsOfficialAchievementCompleted(item) descending, item.Progress descending, item.AchievementId
 					select item).ToList(),
-				DetailText = "职业分类（游戏成就）: " + @group.Key + Environment.NewLine + "当前筛选: " + completionFilter + Environment.NewLine + "已完成: " + @group.Select((ClassAchievementEntry entry) => entry.Achievement).Count(IsOfficialAchievementCompleted) + Environment.NewLine + "已读取到的成就条目: " + @group.Count() + Environment.NewLine + Environment.NewLine + "明细:" + Environment.NewLine + string.Join(Environment.NewLine, from item in (from entry in @group
+				DetailText = "职业分类（游戏成就）: " + @group.Key + Environment.NewLine + "当前筛选: " + completionFilter + Environment.NewLine + "已完成: " + CountOfficialAchievementCompletionsForFilter(@group.Select((ClassAchievementEntry entry) => entry.Achievement), completionFilter) + Environment.NewLine + "已读取到的成就条目: " + @group.Count() + Environment.NewLine + Environment.NewLine + "明细:" + Environment.NewLine + string.Join(Environment.NewLine, from item in (from entry in @group
 						let item = entry.Achievement
 						orderby IsOfficialAchievementCompleted(item) descending, item.Progress descending, item.AchievementId
 						select item).Take(80)
@@ -4868,8 +4878,8 @@ internal sealed class FirestoneDataViewer : Form
 			select entry.Achievement).Distinct().OrderByDescending(IsOfficialAchievementCompleted).ThenByDescending((OfficialAchievementExportRow item) => item.Progress).ThenBy((OfficialAchievementExportRow item) => item.AchievementId).ToList();
 		if (list3.Count > 0 || completionFilter == "全部")
 		{
-			int num = list3.Count(IsOfficialAchievementCompleted);
-			int num2 = list3.Where(IsOfficialAchievementCompleted).Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0);
+			int num = CountOfficialAchievementCompletionsForFilter(list3, completionFilter);
+			int num2 = list3.Where(IsOfficialAchievementActuallyCompleted).Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0);
 			int num3 = list3.Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0);
 			list2.Add(new AchievementCategoryViewRow
 			{
@@ -4920,7 +4930,7 @@ internal sealed class FirestoneDataViewer : Form
 				text = (string.IsNullOrWhiteSpace(text) ? "(未命名成就)" : text);
 				int num = ((item.Reference != null) ? item.Reference.Quota : 0);
 				string text2 = ((num > 0) ? (item.Progress + "/" + num) : item.Progress.ToString(CultureInfo.InvariantCulture));
-				string text3 = (IsOfficialAchievementCompleted(item) ? "已完成" : "进行中");
+				string text3 = GetOfficialAchievementStatusText(item);
 				string text4 = ((item.Reference != null) ? item.Reference.HsSectionId.ToString(CultureInfo.InvariantCulture) : "-");
 				list2.Add("- [" + item.AchievementId + "] " + text + " (" + text2 + ", " + text3 + ", section " + text4 + ")");
 			}
@@ -4941,8 +4951,9 @@ internal sealed class FirestoneDataViewer : Form
 		list2.Add("图标: " + ((row != null) ? (row.Icon ?? string.Empty) : string.Empty));
 		list2.Add("当前官方根分类共 5 类：1 / 2 / 3 / 4 / 6");
 		list2.Add("当前筛选: " + (string.IsNullOrWhiteSpace(completionFilter) ? "全部" : completionFilter));
-		list2.Add("当前点数: " + list.Where(IsOfficialAchievementCompleted).Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0) + " / " + list.Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0));
-		list2.Add("完成数: " + list.Count(IsOfficialAchievementCompleted) + " / " + list.Count);
+		list2.Add("当前点数: " + list.Where(IsOfficialAchievementActuallyCompleted).Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0) + " / " + list.Sum((OfficialAchievementExportRow item) => (item.Reference != null) ? item.Reference.Points : 0));
+		list2.Add("完成数: " + CountOfficialAchievementCompletionsForFilter(list, completionFilter) + " / " + list.Count);
+		list2.Add("停用数: " + list.Count(IsOfficialAchievementRetired));
 		list2.Add("挂接条目: " + list.Count);
 		list2.Add("");
 		list2.Add("说明:");
@@ -4968,7 +4979,7 @@ internal sealed class FirestoneDataViewer : Form
 				text = (string.IsNullOrWhiteSpace(text) ? "(未命名成就)" : text);
 				int num = ((item.Reference != null) ? item.Reference.Quota : 0);
 				string text2 = ((num > 0) ? (item.Progress + "/" + num) : item.Progress.ToString(CultureInfo.InvariantCulture));
-				string text3 = (IsOfficialAchievementCompleted(item) ? "已完成" : "进行中");
+				string text3 = GetOfficialAchievementStatusText(item);
 				string text4 = ((item.PrimaryCategory != null) ? item.PrimaryCategory.Name : "未分类");
 				string text5 = ((item.LeafCategory != null) ? item.LeafCategory.Name : "未分类");
 				list3.Add("- [" + item.AchievementId + "] " + text + "（" + text2 + "，" + text3 + "，" + text4 + " / " + text5 + "）");
@@ -5010,6 +5021,8 @@ internal sealed class FirestoneDataViewer : Form
 		list.Add("一级分类: " + ((path != null && path.PrimaryCategory != null) ? path.PrimaryCategory.Name : "未分类"));
 		list.Add("挂接条目: " + (achievements?.Count ?? 0));
 		list.Add("已完成: " + (achievements?.Count(IsOfficialAchievementCompleted) ?? 0));
+		list.Add("停用: " + (achievements?.Count(IsOfficialAchievementRetired) ?? 0));
+		list.Add("待完成: " + (achievements?.Count(IsOfficialAchievementOutstanding) ?? 0));
 		list.Add("");
 		List<string> list2 = list;
 		if (achievements == null || achievements.Count == 0)
@@ -5028,9 +5041,43 @@ internal sealed class FirestoneDataViewer : Form
 		return string.Join(Environment.NewLine, list2);
 	}
 
-	private static bool IsOfficialAchievementCompleted(OfficialAchievementExportRow row)
+	private static bool IsOfficialAchievementActuallyCompleted(OfficialAchievementExportRow row)
 	{
 		return row != null && (row.Status == 2 || row.Status == 4);
+	}
+
+	private static bool IsOfficialAchievementRetired(OfficialAchievementExportRow row)
+	{
+		if (row == null || row.PrimaryCategory == null)
+		{
+			return false;
+		}
+		return row.PrimaryCategory.Id == 61 || string.Equals(row.PrimaryCategory.Name, "经典（已停运）", StringComparison.OrdinalIgnoreCase);
+	}
+
+	private static bool IsOfficialAchievementCompleted(OfficialAchievementExportRow row)
+	{
+		return IsOfficialAchievementActuallyCompleted(row);
+	}
+
+	private static bool IsOfficialAchievementOutstanding(OfficialAchievementExportRow row)
+	{
+		return !IsOfficialAchievementActuallyCompleted(row) && !IsOfficialAchievementRetired(row);
+	}
+
+	private static int CountOfficialAchievementCompletionsForFilter(IEnumerable<OfficialAchievementExportRow> rows, string filter)
+	{
+		List<OfficialAchievementExportRow> list = (rows ?? Enumerable.Empty<OfficialAchievementExportRow>()).ToList();
+		return filter == "停用" ? list.Count : list.Count(IsOfficialAchievementActuallyCompleted);
+	}
+
+	private static string GetOfficialAchievementStatusText(OfficialAchievementExportRow row)
+	{
+		if (IsOfficialAchievementRetired(row))
+		{
+			return "停用";
+		}
+		return IsOfficialAchievementActuallyCompleted(row) ? "已完成" : "进行中";
 	}
 
 	private AchievementCategoryViewRow GetSelectedProfileRowLegacy()
@@ -5508,7 +5555,7 @@ internal sealed class FirestoneDataViewer : Form
 			AchievementClass = text2,
 			SourceLabel = "官方分类细分",
 			ProgressText = FormatProgress(row.Progress, row.Reference?.Quota ?? 0),
-			StatusText = (IsOfficialAchievementCompleted(row) ? "已完成" : "进行中"),
+			StatusText = GetOfficialAchievementStatusText(row),
 			ExtraText = text3,
 			TrackedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
 		};
@@ -5976,7 +6023,7 @@ internal sealed class FirestoneDataViewer : Form
 					officialAchievementExportRow.PrimaryCategory?.Name,
 					officialAchievementExportRow.LeafCategory?.Name
 				}.Where((string part) => !string.IsNullOrWhiteSpace(part)));
-				return CreateTrackedAchievementDisplayRow(entry.Key, entry.Kind, GetOfficialAchievementStableId(officialAchievementExportRow), officialAchievementDisplayName, officialAchievementRequirementText, text3, "官方分类细分", FormatProgress(officialAchievementExportRow.Progress, officialAchievementExportRow.Reference?.Quota ?? 0), IsOfficialAchievementCompleted(officialAchievementExportRow) ? "已完成" : "进行中", text4, entry.TrackedAt, HasAchievementGuides(officialAchievementDisplayName, officialAchievementRequirementText, text3), isMissingLiveData: false);
+				return CreateTrackedAchievementDisplayRow(entry.Key, entry.Kind, GetOfficialAchievementStableId(officialAchievementExportRow), officialAchievementDisplayName, officialAchievementRequirementText, text3, "官方分类细分", FormatProgress(officialAchievementExportRow.Progress, officialAchievementExportRow.Reference?.Quota ?? 0), GetOfficialAchievementStatusText(officialAchievementExportRow), text4, entry.TrackedAt, HasAchievementGuides(officialAchievementDisplayName, officialAchievementRequirementText, text3), isMissingLiveData: false);
 			}
 		}
 		string text5 = string.IsNullOrWhiteSpace(entry.Name) ? "(未命名成就)" : entry.Name;
@@ -6799,7 +6846,7 @@ internal sealed class FirestoneDataViewer : Form
 				LeafCount = list3.Select((OfficialAchievementExportRow item) => (item.LeafCategory != null) ? item.LeafCategory.Key : "uncategorized").Distinct(StringComparer.OrdinalIgnoreCase).Count(),
 				ItemCount = list3.Count,
 				CompletedCount = list3.Count(IsOfficialAchievementCompleted),
-				CompletionProgress = FormatCompletionRate(list3.Count(IsOfficialAchievementCompleted), list3.Count) + " (" + list3.Count(IsOfficialAchievementCompleted).ToString(CultureInfo.InvariantCulture) + "/" + list3.Count.ToString(CultureInfo.InvariantCulture) + ")",
+				CompletionProgress = ((list3.Count > 0 && list3.All(IsOfficialAchievementRetired)) ? ("停用 (" + list3.Count.ToString(CultureInfo.InvariantCulture) + " 条)") : (FormatCompletionRate(list3.Count(IsOfficialAchievementCompleted), list3.Count) + " (" + list3.Count(IsOfficialAchievementCompleted).ToString(CultureInfo.InvariantCulture) + "/" + list3.Count.ToString(CultureInfo.InvariantCulture) + ")")),
 				Achievements = list3
 			};
 		})
@@ -6852,7 +6899,7 @@ internal sealed class FirestoneDataViewer : Form
 			};
 		}, delegate
 		{
-			return incompletePrimaryOnlyCheckBox.Checked ? list.Where((OfficialPrimaryGroupDisplayRow row) => row.CompletedCount < row.ItemCount).ToList() : list;
+			return incompletePrimaryOnlyCheckBox.Checked ? list.Where((OfficialPrimaryGroupDisplayRow row) => (row.Achievements ?? new List<OfficialAchievementExportRow>()).Any(IsOfficialAchievementOutstanding)).ToList() : list;
 		}, delegate(FlowLayoutPanel filterPanel, Action refreshGroups)
 		{
 			filterPanel.Controls.Add(incompletePrimaryOnlyCheckBox);
@@ -7404,7 +7451,7 @@ internal sealed class FirestoneDataViewer : Form
 			string text10 = GuessOfficialAchievementClass(row);
 			string text11 = GetOfficialAchievementTrackKey(row);
 			bool flag = HasAchievementGuides(text9, text5, text10);
-			string text12 = IsOfficialAchievementCompleted(row) ? "已完成" : "进行中";
+			string text12 = GetOfficialAchievementStatusText(row);
 			dataTable.Rows.Add(IsAchievementTracked(text11) ? "已收藏" : "收藏", flag ? "攻略" : string.Empty, text9, text7, text12, text5, text6, text8, num2, text9, text5, text10, text11, "official", GetOfficialAchievementStableId(row), text9, text5, text10, "官方分类细分", text7, text12, text8);
 		}
 		return dataTable;

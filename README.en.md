@@ -9,6 +9,9 @@ community-authored guides in one interface.
 ## Features
 
 - Browse achievements by official category, subcategory, and class.
+- Mark achievements under the official retired Classic category separately as
+  retired and exclude them from incomplete items, without changing Firestone's
+  original completion count or the account's current achievement points.
 - Inspect progress, tier requirements, points, and related cards.
 - Search and filter the local card collection.
 - Read local community guides, copy deck codes, and open original sources.
@@ -18,11 +21,12 @@ community-authored guides in one interface.
 
 ## Requirements and usage
 
-- Windows 10/11 and .NET Framework 4.8.
+- 64-bit Windows 10/11 and .NET Framework 4.8.
 - Firestone must be installed; start Hearthstone and Firestone before
   refreshing live account data.
 - Download and fully extract a release, then run `HSAchieveGuide.exe`.
 - Keep `ExportMindVisionAchievements.v3.exe` next to the main executable.
+- The runtime exporter is built for 64-bit Firestone/Overwolf modules.
 
 The usual Firestone data directory is:
 
@@ -57,4 +61,3 @@ other third-party material are not covered by that license. See
 This is not an official Blizzard Entertainment or Firestone product. The tool
 is organized and published by community individuals, with OpenAI tools used as
 development assistance.
-

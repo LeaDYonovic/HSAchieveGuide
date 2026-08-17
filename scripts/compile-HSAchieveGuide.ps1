@@ -155,7 +155,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $helperArgs = [System.Collections.Generic.List[string]]::new()
-foreach ($argument in @('/target:exe', '/platform:x86', '/langversion:latest', '/utf8output', '/optimize+')) {
+foreach ($argument in @('/target:exe', '/platform:x64', '/langversion:latest', '/utf8output', '/optimize+')) {
     $helperArgs.Add($argument)
 }
 foreach ($reference in $commonReferences) {
