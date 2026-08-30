@@ -41,5 +41,20 @@ foreach ($name in @('flat.zh-CN.json', 'hierarchy.zh-CN.json', 'summary.json', '
 
 Compress-Archive -LiteralPath $packageDir -DestinationPath $zipPath -CompressionLevel Optimal
 $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $zipPath
+
+$defender = Join-Path $env:ProgramFiles 'Windows Defender\MpCmdRun.exe'
+if (Test-Path -LiteralPath $defender) {
+    foreach ($scanPath in @((Join-Path $packageDir 'HSAchieveGuide.exe'), $zipPath)) {
+        & $defender -Scan -ScanType 3 -File $scanPath
+        if ($LASTEXITCODE -ne 0) {
+            throw "Microsoft Defender did not approve the release file: $scanPath"
+        }
+    }
+    Write-Host 'Microsoft Defender: no threats found.'
+}
+else {
+    Write-Warning 'Microsoft Defender command-line scanner was not found; release files were not scanned.'
+}
+
 Write-Host ('Release: ' + $zipPath)
 Write-Host ('SHA256: ' + $hash.Hash)

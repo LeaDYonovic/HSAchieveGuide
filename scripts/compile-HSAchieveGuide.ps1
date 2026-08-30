@@ -130,7 +130,7 @@ $commonReferences = @('System', 'System.Core', 'System.Web.Extensions') |
     ForEach-Object { '/reference:' + (Join-Path $frameworkReference ($_.ToString() + '.dll')) }
 
 $mainArgs = [System.Collections.Generic.List[string]]::new()
-foreach ($argument in @('/target:winexe', '/platform:x86', '/langversion:latest', '/utf8output', '/optimize+')) {
+foreach ($argument in @('/target:winexe', '/platform:x64', '/langversion:latest', '/utf8output', '/optimize+')) {
     $mainArgs.Add($argument)
 }
 foreach ($reference in $commonReferences) {
@@ -147,6 +147,7 @@ $mainArgs.Add('/resource:' + (Join-Path $dataDir 'guide-table.json') + ',EmbedJs
 $mainOutput = Join-Path $distDir 'HSAchieveGuide.exe'
 $mainArgs.Add('/out:' + $mainOutput)
 $mainArgs.Add((Join-Path $sourceDir 'HSAchieveGuide.cs'))
+$mainArgs.Add((Join-Path $sourceDir 'FirestoneRuntimeBridge.cs'))
 
 Write-Host 'Compiling HSAchieveGuide.exe...'
 & $csc $mainArgs.ToArray()

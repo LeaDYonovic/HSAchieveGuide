@@ -21,8 +21,11 @@ community-authored guides in one interface.
 - Inspect progress, tier requirements, points, and related cards.
 - Search and filter the local card collection.
 - Read local community guides, copy deck codes, and open original sources.
-- Reload account data already written locally by Firestone, with an offline
-  official-achievement baseline as fallback.
+- Read account achievement progress directly from the local Firestone component
+  without launching a helper process, and reload collection data written locally
+  by Firestone.
+- Use the last successful progress cache when Firestone is unavailable, with an
+  offline official-achievement baseline as fallback.
 - No guide server, guide upload, or administrator-review functionality.
 
 ## Requirements and usage
@@ -48,10 +51,14 @@ The build output is written to `dist/`. The script downloads a pinned Roslyn
 compiler package from the official NuGet feed and uses the local .NET
 Framework reference assemblies.
 
+The packaging script scans both the executable and ZIP with Microsoft Defender
+and stops if either file is not approved.
+
 ## Privacy and network access
 
 The application reads local Firestone/Hearthstone data. It has no account-data
-upload service. Source links open in the default browser.
+upload service. Achievement refreshes load the local Firestone component directly
+and do not launch another executable. Source links open in the default browser.
 Runtime exports, logs, local paths, and collection files are ignored by Git.
 
 ## License

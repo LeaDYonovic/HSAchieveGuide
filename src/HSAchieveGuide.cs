@@ -34,7 +34,6 @@ internal static class Program
 		// Derived files to split out from hs-achievement-data.json
 		var splitMap = new Dictionary<string, string>
 		{
-			["categories"]       = Path.Combine(mvDir, "mindvision-official-categories.json"),
 			["type_map"]         = Path.Combine(mvDir, "mindvision-achievement-category-config.json"),
 			["achievements"]     = Path.Combine(mvDir, "mindvision-achievement-reference.json"),
 			["dual_class_map"]   = Path.Combine(jsonDir, "dual-class-achievement-map.json"),
@@ -1322,7 +1321,7 @@ internal sealed class FirestoneDataViewer : Form
 	private FirestoneLoadedData LoadDataSnapshot(Action<string> progress = null)
 	{
 		WriteStartupTrace("snapshot: begin");
-		progress?.Invoke("刷新运行时导出...");
+		progress?.Invoke("准备同步 Firestone 成就数据...");
 		MindVisionExportRefreshResult mindVisionExportRefreshResult = TryRefreshMindVisionExport(progress);
 		WriteStartupTrace("snapshot: export-status=" + SafeTraceText(mindVisionExportRefreshResult?.StatusLabel) + ", details=" + SafeTraceText(mindVisionExportRefreshResult?.Details) + ", output=" + SafeTraceText(mindVisionExportRefreshResult?.LatestOutputPath));
 		progress?.Invoke("加载卡牌元数据...");
@@ -1346,7 +1345,7 @@ internal sealed class FirestoneDataViewer : Form
 		WriteStartupTrace("snapshot: progress-count=" + achievementProgressRows.Count.ToString(CultureInfo.InvariantCulture) + ", logFiles=" + logFileCount.ToString(CultureInfo.InvariantCulture));
 		progress?.Invoke("同步官方结构基准...");
 		TryRefreshOfficialCalibrationCache();
-		progress?.Invoke("加载官方分类导出...");
+		progress?.Invoke("加载官方分类数据...");
 		List<OfficialCategoryExportRow> officialCategoryExportRows = LoadOfficialCategoryExports();
 		Dictionary<string, OfficialCategoryPathInfo> officialTypePathMap = LoadOfficialTypePaths();
 		WriteStartupTrace("snapshot: official-categories=" + officialCategoryExportRows.Count.ToString(CultureInfo.InvariantCulture));
@@ -1582,7 +1581,7 @@ internal sealed class FirestoneDataViewer : Form
 		{
 			text2 = text2 + "  可选缺失: " + string.Join("/", list);
 		}
-		HeaderLabel.Text = "目录 " + CompactPathText(_firestoneDir, 42) + "   ·   定位 " + _firestoneDirSourceLabel + "   ·   " + text2 + "   ·   " + text + "   ·   导出 " + SafeText(_mindVisionExportRefreshResult.StatusLabel);
+		HeaderLabel.Text = "目录 " + CompactPathText(_firestoneDir, 42) + "   ·   定位 " + _firestoneDirSourceLabel + "   ·   " + text2 + "   ·   " + text + "   ·   成就 " + SafeText(_mindVisionExportRefreshResult.StatusLabel);
 	}
 
 	private static void ApplyTabPageTheme(TabPage tabPage)
@@ -3153,16 +3152,34 @@ internal sealed class FirestoneDataViewer : Form
 
 	private MindVisionExportRefreshResult TryRefreshMindVisionExport(Action<string> progress = null)
 	{
-		string[] mindVisionExportOutputPaths = GetMindVisionExportOutputPaths();
-		string text = FindLatestExistingPath(mindVisionExportOutputPaths);
+		string text = FindMindVisionExportFilePath("mindvision-achievements.json");
 		DateTime? dateTime = TryGetFileWriteTime(text);
-		progress?.Invoke("重新读取 Firestone 本地缓存...");
-		string details = "安全发行版不再启动外部运行时导出程序；本次刷新将重新读取 Firestone 已写入的本地缓存与日志。";
-		if (!string.IsNullOrWhiteSpace(text))
+		if (Process.GetProcessesByName("Hearthstone").Length == 0)
 		{
-			details += " 已检测到现有运行时导出数据，将一并读取。";
+			string status = string.IsNullOrWhiteSpace(text) ? "等待更新" : "使用缓存";
+			string details = string.IsNullOrWhiteSpace(text)
+				? "未检测到 Hearthstone，当前没有可用的个人成就进度缓存。请启动 Hearthstone 与 Firestone 后刷新。"
+				: "未检测到 Hearthstone，继续使用上次成功读取的个人成就进度。";
+			return MindVisionExportRefreshResult.Create(status, details, null, text, dateTime, shouldWarnUser: false);
 		}
-		return MindVisionExportRefreshResult.Create("本地读取", details, null, text, dateTime, shouldWarnUser: false);
+		try
+		{
+			progress?.Invoke("从 Firestone 读取个人成就进度...");
+			FirestoneRuntimeExportResult result = FirestoneRuntimeBridge.Export(_mindVisionExportDir);
+			string details = "已从本机 Firestone 读取 " + result.AchievementCount.ToString(CultureInfo.InvariantCulture)
+				+ " 条成就进度和 " + result.CategoryCount.ToString(CultureInfo.InvariantCulture) + " 个分类汇总。";
+			return MindVisionExportRefreshResult.Create("已同步", details, result.DllPath, result.LatestOutputPath, result.ExportedAt, shouldWarnUser: false);
+		}
+		catch (Exception ex)
+		{
+			string status = string.IsNullOrWhiteSpace(text) ? "读取失败" : "使用缓存";
+			string details = "Firestone 本地读取失败: " + ex.Message;
+			if (!string.IsNullOrWhiteSpace(text))
+			{
+				details += " 已继续使用上次成功读取的进度。";
+			}
+			return MindVisionExportRefreshResult.Create(status, details, null, text, dateTime, shouldWarnUser: string.IsNullOrWhiteSpace(text));
+		}
 	}
 
 	private List<OfficialCategoryExportRow> LoadOfficialCategoryExports()
@@ -4622,7 +4639,7 @@ internal sealed class FirestoneDataViewer : Form
 				TotalCount = row.TotalAchievements,
 				Points = row.Points,
 				AvailablePoints = row.AvailablePoints,
-				DetailText = "官方分类 ID: " + row.Id + Environment.NewLine + "分类名称: " + GetOfficialCategoryDisplayName(row.Id) + Environment.NewLine + "当前点数: " + row.Points + " / " + row.AvailablePoints + Environment.NewLine + "完成数: " + row.CompletedAchievements + " / " + row.TotalAchievements + Environment.NewLine + Environment.NewLine + "说明:" + Environment.NewLine + "1. 这一列来自 Firestone 本地缓存的官方分类汇总。" + Environment.NewLine + "2. 当前磁盘缓存只保存了分类 ID 和汇总数字，没有保存每条成就与官方分类的完整映射。" + Environment.NewLine + "3. 如果后续把 Firestone 运行时的 getAchievementCategories()/getAchievementsInfo() 导出下来，这里可以升级成按官方分类显示具体成就。"
+				DetailText = "官方分类 ID: " + row.Id + Environment.NewLine + "分类名称: " + GetOfficialCategoryDisplayName(row.Id) + Environment.NewLine + "当前点数: " + row.Points + " / " + row.AvailablePoints + Environment.NewLine + "完成数: " + row.CompletedAchievements + " / " + row.TotalAchievements + Environment.NewLine + Environment.NewLine + "说明:" + Environment.NewLine + "1. 分类汇总来自主程序直接读取的 Firestone 本地运行时数据。" + Environment.NewLine + "2. 具体成就名称、分类和阶段结构来自随包的官方校准数据库。" + Environment.NewLine + "3. Firestone 暂时不可用时会继续使用上次成功同步的缓存。"
 			}).ToList();
 	}
 
@@ -8629,7 +8646,7 @@ internal sealed class MindVisionExportRefreshResult
 
 	public static MindVisionExportRefreshResult CreateInitial()
 	{
-		return Create("未尝试", "当前会话尚未触发运行时导出。", null, null, null, shouldWarnUser: false);
+		return Create("未同步", "当前会话尚未读取 Firestone 成就数据。", null, null, null, shouldWarnUser: false);
 	}
 
 	public static MindVisionExportRefreshResult Create(string statusLabel, string details, string executablePath, string latestOutputPath, DateTime? latestOutputTime, bool shouldWarnUser)
