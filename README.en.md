@@ -9,6 +9,12 @@ community-authored guides in one interface.
 ## Features
 
 - Browse achievements by official category, subcategory, and class.
+- Group multi-tier achievements by the official `nextTierId` chain and show the
+  completed tiers, final-tier progress, and total points in category and tracked lists.
+- Show numeric progress percentages in achievement and tracked lists, with sorting by
+  the percentage column header.
+- Sort tracked achievements by their latest detected progress update; refreshes persist
+  progress-change timestamps across application restarts.
 - Mark achievements under the official retired Classic category separately as
   retired and exclude them from incomplete items, without changing Firestone's
   original completion count or the account's current achievement points.

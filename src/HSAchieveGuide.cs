@@ -3473,6 +3473,7 @@ internal sealed class FirestoneDataViewer : Form
 		return new OfficialAchievementExportRow
 		{
 			AchievementId = row.achievementId,
+			NextTierId = row.nextTierId,
 			Progress = runtimeRow?.Progress ?? 0,
 			Index = runtimeRow?.Index ?? 0,
 			Status = runtimeRow?.Status ?? 0,
@@ -4387,14 +4388,14 @@ internal sealed class FirestoneDataViewer : Form
 		string text = NormalizeLookupKey((TrackedSearchBox != null) ? TrackedSearchBox.Text : string.Empty);
 		if (!string.IsNullOrWhiteSpace(text))
 		{
-			list = list.Where((TrackedAchievementDisplayRow row) => NormalizeLookupKey(row.Name).Contains(text) || NormalizeLookupKey(row.SourceLabel).Contains(text) || NormalizeLookupKey(row.Requirement).Contains(text) || NormalizeLookupKey(row.ExtraText).Contains(text) || NormalizeLookupKey(row.ProgressText).Contains(text) || NormalizeLookupKey(row.StatusText).Contains(text)).ToList();
+			list = list.Where((TrackedAchievementDisplayRow row) => NormalizeLookupKey(row.Name).Contains(text) || NormalizeLookupKey(row.SourceLabel).Contains(text) || NormalizeLookupKey(row.Requirement).Contains(text) || NormalizeLookupKey(row.ExtraText).Contains(text) || NormalizeLookupKey(row.StageText).Contains(text) || NormalizeLookupKey(row.ProgressText).Contains(text) || NormalizeLookupKey(row.StatusText).Contains(text)).ToList();
 		}
 		TrackedGrid.DataSource = BuildTrackedAchievementTable(list);
 		ConfigureAchievementGuideGrid(TrackedGrid);
 		int num = _trackedAchievementLookup.Values.Count((TrackedAchievementEntry entry) => string.Equals(entry.Kind, "official", StringComparison.OrdinalIgnoreCase));
 		int num2 = _trackedAchievementLookup.Values.Count((TrackedAchievementEntry entry) => string.Equals(entry.Kind, "progress", StringComparison.OrdinalIgnoreCase));
 		int num3 = list.Count((TrackedAchievementDisplayRow row) => row.IsMissingLiveData);
-		TrackedSummaryLabel.Text = "已追踪成就: " + list.Count + " / " + count + "    官方分类细分: " + num + "    官方进度明细: " + num2 + (num3 > 0 ? ("    未在当前数据中找到: " + num3) : string.Empty);
+		TrackedSummaryLabel.Text = "已追踪成就: " + list.Count + " / " + count + "    默认排序: 最近进度更新    官方分类细分: " + num + "    官方进度明细: " + num2 + (num3 > 0 ? ("    未在当前数据中找到: " + num3) : string.Empty);
 		SelectFirstActionableGridRow(TrackedGrid);
 		UpdateTrackedActionButtonsState();
 	}
@@ -4714,6 +4715,165 @@ internal sealed class FirestoneDataViewer : Form
 			enumerable = enumerable.Where(IsOfficialAchievementRetired);
 		}
 		return enumerable.ToList();
+	}
+
+	private static List<OfficialAchievementExportRow> MergeOfficialAchievementTiersForDisplay(IEnumerable<OfficialAchievementExportRow> rows)
+	{
+		List<OfficialAchievementExportRow> list = new List<OfficialAchievementExportRow>();
+		HashSet<int> hashSet = new HashSet<int>();
+		foreach (OfficialAchievementExportRow row in rows ?? Enumerable.Empty<OfficialAchievementExportRow>())
+		{
+			IEnumerable<OfficialAchievementExportRow> enumerable = (row != null && row.TierStages != null && row.TierStages.Count > 0) ? row.TierStages : new OfficialAchievementExportRow[1] { row };
+			foreach (OfficialAchievementExportRow item in enumerable)
+			{
+				if (item != null && item.AchievementId > 0 && hashSet.Add(item.AchievementId))
+				{
+					list.Add(item);
+				}
+			}
+		}
+		if (list.Count == 0)
+		{
+			return new List<OfficialAchievementExportRow>();
+		}
+		Dictionary<int, OfficialAchievementExportRow> dictionary = list.ToDictionary((OfficialAchievementExportRow row) => row.AchievementId);
+		HashSet<int> hashSet2 = new HashSet<int>(list.Where((OfficialAchievementExportRow row) => row.NextTierId > 0 && dictionary.ContainsKey(row.NextTierId)).Select((OfficialAchievementExportRow row) => row.NextTierId));
+		HashSet<int> hashSet3 = new HashSet<int>();
+		List<OfficialAchievementExportRow> list2 = new List<OfficialAchievementExportRow>();
+		Action<OfficialAchievementExportRow> action = delegate(OfficialAchievementExportRow start)
+		{
+			if (start == null || hashSet3.Contains(start.AchievementId))
+			{
+				return;
+			}
+			List<OfficialAchievementExportRow> list3 = new List<OfficialAchievementExportRow>();
+			OfficialAchievementExportRow officialAchievementExportRow = start;
+			while (officialAchievementExportRow != null && hashSet3.Add(officialAchievementExportRow.AchievementId))
+			{
+				list3.Add(officialAchievementExportRow);
+				if (officialAchievementExportRow.NextTierId <= 0 || !dictionary.TryGetValue(officialAchievementExportRow.NextTierId, out officialAchievementExportRow))
+				{
+					break;
+				}
+			}
+			if (list3.Count > 0)
+			{
+				list2.Add(CreateOfficialAchievementTierDisplayRow(list3));
+			}
+		};
+		foreach (OfficialAchievementExportRow item2 in list.Where((OfficialAchievementExportRow row) => !hashSet2.Contains(row.AchievementId)))
+		{
+			action(item2);
+		}
+		foreach (OfficialAchievementExportRow item3 in list)
+		{
+			action(item3);
+		}
+		return list2;
+	}
+
+	private static OfficialAchievementExportRow CreateOfficialAchievementTierDisplayRow(List<OfficialAchievementExportRow> stages)
+	{
+		List<OfficialAchievementExportRow> list = stages ?? new List<OfficialAchievementExportRow>();
+		OfficialAchievementExportRow officialAchievementExportRow = list.FirstOrDefault((OfficialAchievementExportRow row) => row.Reference != null && row.Reference.Root) ?? list.FirstOrDefault();
+		OfficialAchievementExportRow officialAchievementExportRow2 = GetOfficialAchievementCurrentTier(list) ?? officialAchievementExportRow;
+		if (officialAchievementExportRow == null)
+		{
+			return null;
+		}
+		return new OfficialAchievementExportRow
+		{
+			AchievementId = officialAchievementExportRow.AchievementId,
+			NextTierId = officialAchievementExportRow.NextTierId,
+			Progress = officialAchievementExportRow2?.Progress ?? officialAchievementExportRow.Progress,
+			Index = officialAchievementExportRow2?.Index ?? officialAchievementExportRow.Index,
+			Status = officialAchievementExportRow2?.Status ?? officialAchievementExportRow.Status,
+			Reference = officialAchievementExportRow.Reference,
+			RootCategory = officialAchievementExportRow.RootCategory,
+			PrimaryCategory = officialAchievementExportRow.PrimaryCategory,
+			LeafCategory = officialAchievementExportRow.LeafCategory,
+			TierStages = list
+		};
+	}
+
+	private static List<OfficialAchievementExportRow> GetOfficialAchievementTierStages(OfficialAchievementExportRow row)
+	{
+		if (row == null)
+		{
+			return new List<OfficialAchievementExportRow>();
+		}
+		return (row.TierStages != null && row.TierStages.Count > 0) ? row.TierStages : new List<OfficialAchievementExportRow>(1) { row };
+	}
+
+	private static OfficialAchievementExportRow GetOfficialAchievementCurrentTier(IEnumerable<OfficialAchievementExportRow> stages)
+	{
+		List<OfficialAchievementExportRow> list = (stages ?? Enumerable.Empty<OfficialAchievementExportRow>()).Where((OfficialAchievementExportRow row) => row != null).ToList();
+		if (list.Count == 0)
+		{
+			return null;
+		}
+		if (list.All(IsOfficialAchievementRetired) || list.All(IsOfficialAchievementActuallyCompleted))
+		{
+			return list[list.Count - 1];
+		}
+		return list.FirstOrDefault((OfficialAchievementExportRow row) => !IsOfficialAchievementActuallyCompleted(row) && (row.Status != 0 || row.Progress > 0)) ?? list.FirstOrDefault((OfficialAchievementExportRow row) => !IsOfficialAchievementActuallyCompleted(row)) ?? list[list.Count - 1];
+	}
+
+	private static OfficialAchievementExportRow GetOfficialAchievementFinalTier(OfficialAchievementExportRow row)
+	{
+		List<OfficialAchievementExportRow> list = GetOfficialAchievementTierStages(row);
+		return (list.Count > 0) ? list[list.Count - 1] : row;
+	}
+
+	private static int GetOfficialAchievementCompletedTierCount(OfficialAchievementExportRow row)
+	{
+		return GetOfficialAchievementTierStages(row).Count(IsOfficialAchievementActuallyCompleted);
+	}
+
+	private static string GetOfficialAchievementTierStageText(OfficialAchievementExportRow row)
+	{
+		List<OfficialAchievementExportRow> list = GetOfficialAchievementTierStages(row);
+		if (list.Count <= 1)
+		{
+			return "-";
+		}
+		if (list.All(IsOfficialAchievementRetired))
+		{
+			return list.Count.ToString(CultureInfo.InvariantCulture) + " 阶段";
+		}
+		return GetOfficialAchievementCompletedTierCount(row).ToString(CultureInfo.InvariantCulture) + "/" + list.Count.ToString(CultureInfo.InvariantCulture);
+	}
+
+	private static string GetOfficialAchievementTierProgressText(OfficialAchievementExportRow row)
+	{
+		OfficialAchievementExportRow officialAchievementExportRow = GetOfficialAchievementFinalTier(row);
+		return FormatProgress(officialAchievementExportRow?.Progress ?? 0, officialAchievementExportRow?.Reference?.Quota ?? 0);
+	}
+
+	private static object GetOfficialAchievementTierProgressRatioValue(OfficialAchievementExportRow row)
+	{
+		OfficialAchievementExportRow officialAchievementExportRow = GetOfficialAchievementFinalTier(row);
+		return GetProgressRatioValue(officialAchievementExportRow?.Progress ?? 0, officialAchievementExportRow?.Reference?.Quota ?? 0);
+	}
+
+	private static string GetOfficialAchievementTierRequirementText(OfficialAchievementExportRow row)
+	{
+		OfficialAchievementExportRow officialAchievementExportRow = GetOfficialAchievementFinalTier(row);
+		string text = GetOfficialAchievementRequirementText(officialAchievementExportRow?.Reference);
+		int num = officialAchievementExportRow?.Reference?.Quota ?? 0;
+		return (num > 0) ? text.Replace("$q", num.ToString(CultureInfo.InvariantCulture)) : text;
+	}
+
+	private static string GetOfficialAchievementTierPointsText(OfficialAchievementExportRow row)
+	{
+		List<OfficialAchievementExportRow> list = GetOfficialAchievementTierStages(row);
+		int num = list.Sum((OfficialAchievementExportRow stage) => stage?.Reference?.Points ?? 0);
+		if (list.Count <= 1)
+		{
+			return num.ToString(CultureInfo.InvariantCulture);
+		}
+		int num2 = list.Where(IsOfficialAchievementActuallyCompleted).Sum((OfficialAchievementExportRow stage) => stage?.Reference?.Points ?? 0);
+		return num2.ToString(CultureInfo.InvariantCulture) + "/" + num.ToString(CultureInfo.InvariantCulture);
 	}
 
 	private static List<AchievementProgressRow> ApplyAchievementProgressCompletionFilter(IEnumerable<AchievementProgressRow> rows, string filter)
@@ -5043,7 +5203,16 @@ internal sealed class FirestoneDataViewer : Form
 
 	private static bool IsOfficialAchievementActuallyCompleted(OfficialAchievementExportRow row)
 	{
-		return row != null && (row.Status == 2 || row.Status == 4);
+		if (row == null)
+		{
+			return false;
+		}
+		if (row.TierStages != null && row.TierStages.Count > 0)
+		{
+			OfficialAchievementExportRow officialAchievementExportRow = row.TierStages[row.TierStages.Count - 1];
+			return officialAchievementExportRow != null && (officialAchievementExportRow.Status == 2 || officialAchievementExportRow.Status == 4);
+		}
+		return row.Status == 2 || row.Status == 4;
 	}
 
 	private static bool IsOfficialAchievementRetired(OfficialAchievementExportRow row)
@@ -5124,14 +5293,15 @@ internal sealed class FirestoneDataViewer : Form
 		{
 			AchievementCategoryViewRow selectedLadderClassRow = GetSelectedLadderClassRow();
 			List<OfficialAchievementExportRow> list = selectedLadderClassRow?.AttachedAchievements as List<OfficialAchievementExportRow> ?? (selectedLadderClassRow?.AttachedAchievements as IList<OfficialAchievementExportRow>)?.ToList() ?? new List<OfficialAchievementExportRow>();
+			List<OfficialAchievementExportRow> list2 = MergeOfficialAchievementTiersForDisplay(list);
 			LadderClassDetailsGrid.DataSource = null;
 			LadderClassDetailsGrid.AutoGenerateColumns = true;
-			LadderClassDetailsGrid.Tag = list.Cast<object>().ToList();
-			LadderClassDetailsGrid.DataSource = BuildOfficialAchievementTableV2(list);
+			LadderClassDetailsGrid.Tag = list2.Cast<object>().ToList();
+			LadderClassDetailsGrid.DataSource = BuildOfficialAchievementTableV2(list2);
 			ConfigureAchievementGuideGrid(LadderClassDetailsGrid);
 			if (LadderClassDetailsSummaryLabel != null)
 			{
-				LadderClassDetailsSummaryLabel.Text = ((selectedLadderClassRow != null) ? ("当前职业: " + (selectedLadderClassRow.Name ?? "全部") + "    成就条目: " + list.Count + "    可直接点“收藏”或“攻略”") : "请选择一行职业分类以查看并操作具体成就。");
+				LadderClassDetailsSummaryLabel.Text = ((selectedLadderClassRow != null) ? ("当前职业: " + (selectedLadderClassRow.Name ?? "全部") + "    成就项目: " + list2.Count + "（原始阶段 " + list.Count + " 条）    可直接点“收藏”或“攻略”") : "请选择一行职业分类以查看并操作具体成就。");
 			}
 		}
 	}
@@ -5222,7 +5392,8 @@ internal sealed class FirestoneDataViewer : Form
 			control2 = textBox2;
 		}
 		control2.Dock = DockStyle.Fill;
-		string text = ((list != null && list.Count > 0) ? ("进度条目 " + list.Count.ToString(CultureInfo.InvariantCulture)) : ((list2 != null && list2.Count > 0) ? ("成就条目 " + list2.Count.ToString(CultureInfo.InvariantCulture)) : "当前没有可展示的细分条目"));
+		int officialDisplayCount = (list2 != null && list2.Count > 0) ? MergeOfficialAchievementTiersForDisplay(list2).Count : 0;
+		string text = ((list != null && list.Count > 0) ? ("进度条目 " + list.Count.ToString(CultureInfo.InvariantCulture)) : ((list2 != null && list2.Count > 0) ? ("成就项目 " + officialDisplayCount.ToString(CultureInfo.InvariantCulture) + "（原始阶段 " + list2.Count.ToString(CultureInfo.InvariantCulture) + " 条）") : "当前没有可展示的细分条目"));
 		form.Controls.Add(button);
 		form.Controls.Add(CreateDialogShell(form.Text, text, control2));
 		ApplyDialogControlTheme(form);
@@ -5248,6 +5419,16 @@ internal sealed class FirestoneDataViewer : Form
 		HideGridColumnIfExists(grid, "__TrackProgressText");
 		HideGridColumnIfExists(grid, "__TrackStatusText");
 		HideGridColumnIfExists(grid, "__TrackExtraText");
+		if (grid.Columns.Contains("进度百分比"))
+		{
+			DataGridViewColumn dataGridViewColumn3 = grid.Columns["进度百分比"];
+			dataGridViewColumn3.AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells;
+			dataGridViewColumn3.Width = 104;
+			dataGridViewColumn3.SortMode = DataGridViewColumnSortMode.Automatic;
+			dataGridViewColumn3.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
+			dataGridViewColumn3.DefaultCellStyle.Format = "0.#%";
+			dataGridViewColumn3.DefaultCellStyle.NullValue = "-";
+		}
 		if (grid.Columns.Contains("收藏"))
 		{
 			EnsureButtonColumn(grid, "收藏");
@@ -5537,7 +5718,7 @@ internal sealed class FirestoneDataViewer : Form
 			return null;
 		}
 		string text = GetOfficialAchievementDisplayName(row);
-		string officialAchievementRequirementText = GetOfficialAchievementRequirementText(row.Reference);
+		string officialAchievementRequirementText = GetOfficialAchievementTierRequirementText(row);
 		string text2 = GuessOfficialAchievementClass(row);
 		string text3 = string.Join("/", new string[3]
 		{
@@ -5545,6 +5726,7 @@ internal sealed class FirestoneDataViewer : Form
 			row.PrimaryCategory?.Name,
 			row.LeafCategory?.Name
 		}.Where((string part) => !string.IsNullOrWhiteSpace(part)));
+		string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
 		return new TrackedAchievementEntry
 		{
 			Key = GetOfficialAchievementTrackKey(row),
@@ -5554,10 +5736,12 @@ internal sealed class FirestoneDataViewer : Form
 			Requirement = officialAchievementRequirementText,
 			AchievementClass = text2,
 			SourceLabel = "官方分类细分",
-			ProgressText = FormatProgress(row.Progress, row.Reference?.Quota ?? 0),
+			StageText = GetOfficialAchievementTierStageText(row),
+			ProgressText = GetOfficialAchievementTierProgressText(row),
 			StatusText = GetOfficialAchievementStatusText(row),
 			ExtraText = text3,
-			TrackedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
+			TrackedAt = timestamp,
+			LastProgressUpdatedAt = timestamp
 		};
 	}
 
@@ -5570,6 +5754,7 @@ internal sealed class FirestoneDataViewer : Form
 		string text = CleanMultiline(row.Description);
 		string text2 = GuessAchievementClass(row);
 		string text3 = string.Join(" / ", new string[2] { row.Type, row.Trigger }.Where((string part) => !string.IsNullOrWhiteSpace(part)));
+		string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
 		return new TrackedAchievementEntry
 		{
 			Key = GetProgressAchievementTrackKey(row),
@@ -5582,7 +5767,8 @@ internal sealed class FirestoneDataViewer : Form
 			ProgressText = FormatProgress(row.Progress, row.MaxProgress),
 			StatusText = (row.Completed ? "已完成" : "进行中"),
 			ExtraText = text3,
-			TrackedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
+			TrackedAt = timestamp,
+			LastProgressUpdatedAt = timestamp
 		};
 	}
 
@@ -5972,6 +6158,7 @@ internal sealed class FirestoneDataViewer : Form
 		{
 			return null;
 		}
+		string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
 		return new TrackedAchievementEntry
 		{
 			Key = GetGridCellText(row, "__TrackKey"),
@@ -5981,19 +6168,94 @@ internal sealed class FirestoneDataViewer : Form
 			Requirement = GetGridCellText(row, "__TrackRequirement"),
 			AchievementClass = GetGridCellText(row, "__TrackClass"),
 			SourceLabel = GetGridCellText(row, "__TrackSource"),
+			StageText = GetGridCellText(row, "阶段"),
 			ProgressText = GetGridCellText(row, "__TrackProgressText"),
 			StatusText = GetGridCellText(row, "__TrackStatusText"),
 			ExtraText = GetGridCellText(row, "__TrackExtraText"),
-			TrackedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
+			TrackedAt = timestamp,
+			LastProgressUpdatedAt = timestamp
 		};
 	}
 
 	private List<TrackedAchievementDisplayRow> BuildTrackedAchievementDisplayRows()
 	{
-		return _trackedAchievementLookup.Values.OrderByDescending((TrackedAchievementEntry entry) => entry.TrackedAt ?? string.Empty, StringComparer.OrdinalIgnoreCase).ThenBy((TrackedAchievementEntry entry) => entry.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase).Select(BuildTrackedAchievementDisplayRow).Where((TrackedAchievementDisplayRow row) => row != null).ToList();
+		List<OfficialAchievementExportRow> list = MergeOfficialAchievementTiersForDisplay((_officialCategoryExportRows ?? new List<OfficialCategoryExportRow>()).SelectMany((OfficialCategoryExportRow category) => category.Achievements ?? new List<OfficialAchievementExportRow>()));
+		List<TrackedAchievementDisplayRow> list2 = new List<TrackedAchievementDisplayRow>();
+		bool flag = false;
+		string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+		foreach (TrackedAchievementEntry item in _trackedAchievementLookup.Values)
+		{
+			TrackedAchievementDisplayRow trackedAchievementDisplayRow = BuildTrackedAchievementDisplayRow(item, list);
+			if (trackedAchievementDisplayRow != null)
+			{
+				flag = UpdateTrackedAchievementProgressState(item, trackedAchievementDisplayRow, timestamp) || flag;
+				list2.Add(trackedAchievementDisplayRow);
+			}
+		}
+		if (flag)
+		{
+			try
+			{
+				SaveTrackedAchievements();
+			}
+			catch (Exception ex)
+			{
+				WriteStartupTrace("tracked-progress-state-save-failed: " + SafeTraceText(ex.Message));
+			}
+		}
+		return SortTrackedAchievementDisplayRows(list2);
 	}
 
-	private TrackedAchievementDisplayRow BuildTrackedAchievementDisplayRow(TrackedAchievementEntry entry)
+	private static List<TrackedAchievementDisplayRow> SortTrackedAchievementDisplayRows(IEnumerable<TrackedAchievementDisplayRow> rows)
+	{
+		return (rows ?? Enumerable.Empty<TrackedAchievementDisplayRow>()).Where((TrackedAchievementDisplayRow row) => row != null).OrderByDescending((TrackedAchievementDisplayRow row) => row.LastProgressUpdatedAtText ?? string.Empty, StringComparer.OrdinalIgnoreCase).ThenByDescending((TrackedAchievementDisplayRow row) => row.TrackedAtText ?? string.Empty, StringComparer.OrdinalIgnoreCase).ThenBy((TrackedAchievementDisplayRow row) => row.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase).ToList();
+	}
+
+	private static bool UpdateTrackedAchievementProgressState(TrackedAchievementEntry entry, TrackedAchievementDisplayRow row, string timestamp)
+	{
+		if (entry == null || row == null)
+		{
+			return false;
+		}
+		bool flag = false;
+		if (string.IsNullOrWhiteSpace(entry.LastProgressUpdatedAt))
+		{
+			entry.LastProgressUpdatedAt = string.IsNullOrWhiteSpace(entry.TrackedAt) ? timestamp : entry.TrackedAt;
+			flag = true;
+		}
+		if (!row.IsMissingLiveData && !string.Equals(CleanMultiline(entry.ProgressText), CleanMultiline(row.ProgressText), StringComparison.OrdinalIgnoreCase))
+		{
+			bool flag2 = HasTrackedProgressValueChanged(entry.ProgressText, row.ProgressText);
+			entry.ProgressText = row.ProgressText;
+			entry.StageText = row.StageText;
+			entry.StatusText = row.StatusText;
+			if (flag2)
+			{
+				entry.LastProgressUpdatedAt = timestamp;
+			}
+			flag = true;
+		}
+		row.LastProgressUpdatedAtText = string.IsNullOrWhiteSpace(entry.LastProgressUpdatedAt) ? "-" : entry.LastProgressUpdatedAt;
+		return flag;
+	}
+
+	private static bool HasTrackedProgressValueChanged(string previousProgressText, string currentProgressText)
+	{
+		if (TryGetTrackedProgressValue(previousProgressText, out var result) && TryGetTrackedProgressValue(currentProgressText, out var result2))
+		{
+			return Math.Abs(result - result2) > double.Epsilon;
+		}
+		return !string.Equals(CleanMultiline(previousProgressText), CleanMultiline(currentProgressText), StringComparison.OrdinalIgnoreCase);
+	}
+
+	private static bool TryGetTrackedProgressValue(string progressText, out double value)
+	{
+		value = 0.0;
+		Match match = Regex.Match(progressText ?? string.Empty, "^\\s*(-?\\d+(?:\\.\\d+)?)");
+		return match.Success && double.TryParse(match.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out value);
+	}
+
+	private TrackedAchievementDisplayRow BuildTrackedAchievementDisplayRow(TrackedAchievementEntry entry, IList<OfficialAchievementExportRow> officialDisplayRows)
 	{
 		if (entry == null || string.IsNullOrWhiteSpace(entry.Key))
 		{
@@ -6006,16 +6268,16 @@ internal sealed class FirestoneDataViewer : Form
 			{
 				string text = CleanMultiline(achievementProgressRow.Description);
 				string text2 = GuessAchievementClass(achievementProgressRow);
-				return CreateTrackedAchievementDisplayRow(entry.Key, entry.Kind, achievementProgressRow.AchievementId, achievementProgressRow.Name, text, text2, "官方进度明细", FormatProgress(achievementProgressRow.Progress, achievementProgressRow.MaxProgress), achievementProgressRow.Completed ? "已完成" : "进行中", string.Join(" / ", new string[2] { achievementProgressRow.Type, achievementProgressRow.Trigger }.Where((string part) => !string.IsNullOrWhiteSpace(part))), entry.TrackedAt, HasAchievementGuides(achievementProgressRow.Name, text, text2), isMissingLiveData: false);
+				return CreateTrackedAchievementDisplayRow(entry.Key, entry.Kind, achievementProgressRow.AchievementId, achievementProgressRow.Name, text, text2, "官方进度明细", "-", FormatProgress(achievementProgressRow.Progress, achievementProgressRow.MaxProgress), achievementProgressRow.Completed ? "已完成" : "进行中", string.Join(" / ", new string[2] { achievementProgressRow.Type, achievementProgressRow.Trigger }.Where((string part) => !string.IsNullOrWhiteSpace(part))), entry.TrackedAt, HasAchievementGuides(achievementProgressRow.Name, text, text2), isMissingLiveData: false);
 			}
 		}
 		else if (string.Equals(entry.Kind, "official", StringComparison.OrdinalIgnoreCase))
 		{
-			OfficialAchievementExportRow officialAchievementExportRow = _officialCategoryExportRows.SelectMany((OfficialCategoryExportRow category) => category.Achievements ?? new List<OfficialAchievementExportRow>()).FirstOrDefault((OfficialAchievementExportRow row) => string.Equals(GetOfficialAchievementTrackKey(row), entry.Key, StringComparison.OrdinalIgnoreCase));
+			OfficialAchievementExportRow officialAchievementExportRow = (officialDisplayRows ?? new List<OfficialAchievementExportRow>()).FirstOrDefault((OfficialAchievementExportRow row) => GetOfficialAchievementTierStages(row).Any((OfficialAchievementExportRow stage) => string.Equals(GetOfficialAchievementTrackKey(stage), entry.Key, StringComparison.OrdinalIgnoreCase)));
 			if (officialAchievementExportRow != null)
 			{
 				string officialAchievementDisplayName = GetOfficialAchievementDisplayName(officialAchievementExportRow);
-				string officialAchievementRequirementText = GetOfficialAchievementRequirementText(officialAchievementExportRow.Reference);
+				string officialAchievementRequirementText = GetOfficialAchievementTierRequirementText(officialAchievementExportRow);
 				string text3 = GuessOfficialAchievementClass(officialAchievementExportRow);
 				string text4 = string.Join("/", new string[3]
 				{
@@ -6023,16 +6285,16 @@ internal sealed class FirestoneDataViewer : Form
 					officialAchievementExportRow.PrimaryCategory?.Name,
 					officialAchievementExportRow.LeafCategory?.Name
 				}.Where((string part) => !string.IsNullOrWhiteSpace(part)));
-				return CreateTrackedAchievementDisplayRow(entry.Key, entry.Kind, GetOfficialAchievementStableId(officialAchievementExportRow), officialAchievementDisplayName, officialAchievementRequirementText, text3, "官方分类细分", FormatProgress(officialAchievementExportRow.Progress, officialAchievementExportRow.Reference?.Quota ?? 0), GetOfficialAchievementStatusText(officialAchievementExportRow), text4, entry.TrackedAt, HasAchievementGuides(officialAchievementDisplayName, officialAchievementRequirementText, text3), isMissingLiveData: false);
+				return CreateTrackedAchievementDisplayRow(entry.Key, entry.Kind, GetOfficialAchievementStableId(officialAchievementExportRow), officialAchievementDisplayName, officialAchievementRequirementText, text3, "官方分类细分", GetOfficialAchievementTierStageText(officialAchievementExportRow), GetOfficialAchievementTierProgressText(officialAchievementExportRow), GetOfficialAchievementStatusText(officialAchievementExportRow), text4, entry.TrackedAt, HasAchievementGuides(officialAchievementDisplayName, officialAchievementRequirementText, text3), isMissingLiveData: false);
 			}
 		}
 		string text5 = string.IsNullOrWhiteSpace(entry.Name) ? "(未命名成就)" : entry.Name;
 		string text6 = entry.Requirement ?? string.Empty;
 		string text7 = string.IsNullOrWhiteSpace(entry.AchievementClass) ? "中立" : entry.AchievementClass;
-		return CreateTrackedAchievementDisplayRow(entry.Key, entry.Kind, entry.TrackId, text5, text6, text7, string.IsNullOrWhiteSpace(entry.SourceLabel) ? "已失配" : (entry.SourceLabel + "（当前未匹配）"), entry.ProgressText, string.IsNullOrWhiteSpace(entry.StatusText) ? "未知" : entry.StatusText, entry.ExtraText, entry.TrackedAt, HasAchievementGuides(text5, text6, text7), isMissingLiveData: true);
+		return CreateTrackedAchievementDisplayRow(entry.Key, entry.Kind, entry.TrackId, text5, text6, text7, string.IsNullOrWhiteSpace(entry.SourceLabel) ? "已失配" : (entry.SourceLabel + "（当前未匹配）"), entry.StageText, entry.ProgressText, string.IsNullOrWhiteSpace(entry.StatusText) ? "未知" : entry.StatusText, entry.ExtraText, entry.TrackedAt, HasAchievementGuides(text5, text6, text7), isMissingLiveData: true);
 	}
 
-	private static TrackedAchievementDisplayRow CreateTrackedAchievementDisplayRow(string trackKey, string trackKind, string trackId, string name, string requirement, string trackClass, string sourceLabel, string progressText, string statusText, string extraText, string trackedAt, bool hasGuide, bool isMissingLiveData)
+	private static TrackedAchievementDisplayRow CreateTrackedAchievementDisplayRow(string trackKey, string trackKind, string trackId, string name, string requirement, string trackClass, string sourceLabel, string stageText, string progressText, string statusText, string extraText, string trackedAt, bool hasGuide, bool isMissingLiveData)
 	{
 		return new TrackedAchievementDisplayRow
 		{
@@ -6043,6 +6305,7 @@ internal sealed class FirestoneDataViewer : Form
 			Requirement = requirement ?? string.Empty,
 			TrackClass = string.IsNullOrWhiteSpace(trackClass) ? "中立" : trackClass,
 			SourceLabel = string.IsNullOrWhiteSpace(sourceLabel) ? "未知来源" : sourceLabel,
+			StageText = string.IsNullOrWhiteSpace(stageText) ? "-" : stageText,
 			ProgressText = string.IsNullOrWhiteSpace(progressText) ? "-" : progressText,
 			StatusText = string.IsNullOrWhiteSpace(statusText) ? "-" : statusText,
 			ExtraText = extraText ?? string.Empty,
@@ -6486,19 +6749,8 @@ internal sealed class FirestoneDataViewer : Form
 			}
 		}, delegate
 		{
-			List<T> list = items.ToList();
 			string text = ((completionFilterBox != null) ? (completionFilterBox.SelectedItem as string) : null) ?? "全部";
-			if (supportsCompletionFilter)
-			{
-				if (typeof(T) == typeof(OfficialAchievementExportRow))
-				{
-					list = ApplyOfficialAchievementCompletionFilter(items.Cast<OfficialAchievementExportRow>(), text).Cast<T>().ToList();
-				}
-				else if (typeof(T) == typeof(AchievementProgressRow))
-				{
-					list = ApplyAchievementProgressCompletionFilter(items.Cast<AchievementProgressRow>(), text).Cast<T>().ToList();
-				}
-			}
+			List<T> list = BuildPagedDetailDisplayItems(items, text, supportsCompletionFilter);
 			int totalPages = Math.Max(1, (int)Math.Ceiling((double)list.Count / DetailPageSize));
 			if (pageIndex < totalPages - 1)
 			{
@@ -6508,19 +6760,8 @@ internal sealed class FirestoneDataViewer : Form
 		});
 		refreshPage = delegate
 		{
-			List<T> list = items.ToList();
 			string text = ((completionFilterBox != null) ? (completionFilterBox.SelectedItem as string) : null) ?? "全部";
-			if (supportsCompletionFilter)
-			{
-				if (typeof(T) == typeof(OfficialAchievementExportRow))
-				{
-					list = ApplyOfficialAchievementCompletionFilter(items.Cast<OfficialAchievementExportRow>(), text).Cast<T>().ToList();
-				}
-				else if (typeof(T) == typeof(AchievementProgressRow))
-				{
-					list = ApplyAchievementProgressCompletionFilter(items.Cast<AchievementProgressRow>(), text).Cast<T>().ToList();
-				}
-			}
+			List<T> list = BuildPagedDetailDisplayItems(items, text, supportsCompletionFilter);
 			int totalPages = Math.Max(1, (int)Math.Ceiling((double)list.Count / DetailPageSize));
 			if (pageIndex >= totalPages)
 			{
@@ -6536,7 +6777,8 @@ internal sealed class FirestoneDataViewer : Form
 			ConfigureAchievementGuideGrid(grid);
 			SelectFirstActionableGridRow(grid);
 			UpdateAchievementActionButtonsState(grid, trackButton, guideButton);
-			pageLabel.Text = string.Format(CultureInfo.InvariantCulture, "第 {0} / {1} 页，共 {2} 条，每页 {3} 条", pageIndex + 1, totalPages, list.Count, DetailPageSize);
+			string text2 = (typeof(T) == typeof(OfficialAchievementExportRow)) ? "项" : "条";
+			pageLabel.Text = string.Format(CultureInfo.InvariantCulture, "第 {0} / {1} 页，共 {2} {3}，每页 {4} {3}", pageIndex + 1, totalPages, list.Count, text2, DetailPageSize);
 			prevButton.Enabled = pageIndex > 0;
 			nextButton.Enabled = pageIndex < totalPages - 1;
 		};
@@ -6575,6 +6817,21 @@ internal sealed class FirestoneDataViewer : Form
 		tableLayoutPanel.Controls.Add(grid, 0, 2);
 		tableLayoutPanel.Controls.Add(flowLayoutPanel, 0, 3);
 		return tableLayoutPanel;
+	}
+
+	private static List<T> BuildPagedDetailDisplayItems<T>(IList<T> items, string completionFilter, bool supportsCompletionFilter)
+	{
+		if (typeof(T) == typeof(OfficialAchievementExportRow))
+		{
+			List<OfficialAchievementExportRow> list = MergeOfficialAchievementTiersForDisplay((items ?? new List<T>()).Cast<OfficialAchievementExportRow>());
+			return (supportsCompletionFilter ? ApplyOfficialAchievementCompletionFilter(list, completionFilter) : list).Cast<T>().ToList();
+		}
+		List<T> list2 = (items ?? new List<T>()).ToList();
+		if (supportsCompletionFilter && typeof(T) == typeof(AchievementProgressRow))
+		{
+			return ApplyAchievementProgressCompletionFilter(list2.Cast<AchievementProgressRow>(), completionFilter).Cast<T>().ToList();
+		}
+		return list2;
 	}
 
 	private void UpdateAchievementActionButtonsState(DataGridView grid, Button trackButton, Button guideButton)
@@ -6714,7 +6971,7 @@ internal sealed class FirestoneDataViewer : Form
 		Func<List<OfficialAchievementExportRow>> getFilteredAchievements = delegate
 		{
 			List<OfficialAchievementExportRow> list3 = (currentGroup != null) ? getGroupAchievements(currentGroup) : new List<OfficialAchievementExportRow>();
-			return ApplyOfficialAchievementCompletionFilter(list3, (completionFilterBox.SelectedItem as string) ?? "全部");
+			return ApplyOfficialAchievementCompletionFilter(MergeOfficialAchievementTiersForDisplay(list3), (completionFilterBox.SelectedItem as string) ?? "全部");
 		};
 		AddLabeledControl(filterPanel, "完成状态", completionFilterBox);
 		addExtraFilterControls?.Invoke(filterPanel, delegate
@@ -6784,6 +7041,7 @@ internal sealed class FirestoneDataViewer : Form
 				pageIndex = 0;
 			}
 			List<OfficialAchievementExportRow> rows = list2.Skip(pageIndex * DetailPageSize).Take(DetailPageSize).ToList();
+			grid.Tag = rows.Cast<object>().ToList();
 			grid.DataSource = BuildOfficialAchievementTableV2(rows);
 			ConfigureAchievementGuideGrid(grid);
 			if (label != null)
@@ -6791,7 +7049,7 @@ internal sealed class FirestoneDataViewer : Form
 				label.Text = (currentGroup == null) ? "当前没有可展示的分组。" : (buildSummaryText(currentGroup) ?? string.Empty);
 			}
 			string text2 = (currentGroup == null) ? string.Empty : (((buildPagePrefix != null) ? buildPagePrefix(currentGroup) : null) ?? string.Empty);
-			pageLabel.Text = string.IsNullOrWhiteSpace(text2) ? string.Format(CultureInfo.InvariantCulture, "第 {0} / {1} 页，共 {2} 条，每页 {3} 条", pageIndex + 1, num, list2.Count, DetailPageSize) : string.Format(CultureInfo.InvariantCulture, "{0} | 第 {1} / {2} 页，共 {3} 条，每页 {4} 条", text2, pageIndex + 1, num, list2.Count, DetailPageSize);
+			pageLabel.Text = string.IsNullOrWhiteSpace(text2) ? string.Format(CultureInfo.InvariantCulture, "第 {0} / {1} 页，共 {2} 项，每页 {3} 项", pageIndex + 1, num, list2.Count, DetailPageSize) : string.Format(CultureInfo.InvariantCulture, "{0} | 第 {1} / {2} 页，共 {3} 项，每页 {4} 项", text2, pageIndex + 1, num, list2.Count, DetailPageSize);
 			prevButton.Enabled = pageIndex > 0;
 			nextButton.Enabled = pageIndex < num - 1;
 		};
@@ -7399,6 +7657,7 @@ internal sealed class FirestoneDataViewer : Form
 		dataTable.Columns.Add("名称");
 		dataTable.Columns.Add("当前进度");
 		dataTable.Columns.Add("目标值");
+		dataTable.Columns.Add("进度百分比", typeof(double));
 		dataTable.Columns.Add("完成状态");
 		dataTable.Columns.Add("具体要求");
 		dataTable.Columns.Add("触发类型");
@@ -7415,7 +7674,7 @@ internal sealed class FirestoneDataViewer : Form
 			string text5 = row.Completed ? "已完成" : "进行中";
 			string text6 = string.Join(" / ", new string[2] { row.Type, row.Trigger }.Where((string part) => !string.IsNullOrWhiteSpace(part)));
 			bool flag = HasAchievementGuides(row.Name, text, text2);
-			dataTable.Rows.Add(IsAchievementTracked(text3) ? "已收藏" : "收藏", flag ? "攻略" : string.Empty, row.AchievementId, row.Name, row.Progress, row.MaxProgress, text5, text, row.Trigger, row.Type, row.LastSeen, row.Name, text, text2, text3, "progress", row.AchievementId, row.Name, text, text2, "官方进度明细", text4, text5, text6);
+			dataTable.Rows.Add(IsAchievementTracked(text3) ? "已收藏" : "收藏", flag ? "攻略" : string.Empty, row.AchievementId, row.Name, row.Progress, row.MaxProgress, GetProgressRatioValue(row.Progress, row.MaxProgress), text5, text, row.Trigger, row.Type, row.LastSeen, row.Name, text, text2, text3, "progress", row.AchievementId, row.Name, text, text2, "官方进度明细", text4, text5, text6);
 		}
 		return dataTable;
 	}
@@ -7426,33 +7685,36 @@ internal sealed class FirestoneDataViewer : Form
 		dataTable.Columns.Add("收藏");
 		dataTable.Columns.Add("攻略");
 		dataTable.Columns.Add("名称");
+		dataTable.Columns.Add("阶段");
 		dataTable.Columns.Add("进度");
+		dataTable.Columns.Add("进度百分比", typeof(double));
 		dataTable.Columns.Add("完成状态");
 		dataTable.Columns.Add("具体要求");
 		dataTable.Columns.Add("关联卡牌收藏");
 		dataTable.Columns.Add("分类");
-		dataTable.Columns.Add("奖励点数");
+		dataTable.Columns.Add("成就点");
 		AddGuideMetadataColumns(dataTable);
 		AddTrackMetadataColumns(dataTable);
 		foreach (OfficialAchievementExportRow row in rows)
 		{
-			ReferenceAchievementExportRow reference = row.Reference;
-			string text = ((reference != null) ? FirstNonEmpty(reference.DisplayName, new string[2] { reference.Name, reference.Text }) : null);
-			int num = reference?.Quota ?? 0;
+			List<OfficialAchievementExportRow> list = GetOfficialAchievementTierStages(row);
+			string text = GetOfficialAchievementDisplayName(row);
 			string text2 = ((row.RootCategory != null) ? row.RootCategory.Name : string.Empty);
 			string text3 = ((row.PrimaryCategory != null) ? row.PrimaryCategory.Name : string.Empty);
 			string text4 = ((row.LeafCategory != null) ? row.LeafCategory.Name : string.Empty);
-			int num2 = reference?.Points ?? 0;
-			string text5 = GetOfficialAchievementRequirementText(reference);
+			string text5 = GetOfficialAchievementTierRequirementText(row);
 			string text6 = BuildOfficialAchievementCollectionHint(row);
-			string text7 = FormatProgress(row.Progress, num);
+			string text7 = GetOfficialAchievementTierProgressText(row);
 			string text8 = string.Join("/", new string[3] { text2, text3, text4 }.Where((string part) => !string.IsNullOrWhiteSpace(part)));
 			string text9 = string.IsNullOrWhiteSpace(text) ? "(未命名成就)" : text;
 			string text10 = GuessOfficialAchievementClass(row);
 			string text11 = GetOfficialAchievementTrackKey(row);
 			bool flag = HasAchievementGuides(text9, text5, text10);
 			string text12 = GetOfficialAchievementStatusText(row);
-			dataTable.Rows.Add(IsAchievementTracked(text11) ? "已收藏" : "收藏", flag ? "攻略" : string.Empty, text9, text7, text12, text5, text6, text8, num2, text9, text5, text10, text11, "official", GetOfficialAchievementStableId(row), text9, text5, text10, "官方分类细分", text7, text12, text8);
+			string text13 = GetOfficialAchievementTierStageText(row);
+			string text14 = GetOfficialAchievementTierPointsText(row);
+			string text15 = text8 + ((list.Count > 1) ? (" / " + list.Count.ToString(CultureInfo.InvariantCulture) + " 阶段") : string.Empty);
+			dataTable.Rows.Add(IsAchievementTracked(text11) ? "已收藏" : "收藏", flag ? "攻略" : string.Empty, text9, text13, text7, GetOfficialAchievementTierProgressRatioValue(row), text12, text5, text6, text8, text14, text9, text5, text10, text11, "official", GetOfficialAchievementStableId(row), text9, text5, text10, "官方分类细分", text7, text12, text15);
 		}
 		return dataTable;
 	}
@@ -7464,16 +7726,18 @@ internal sealed class FirestoneDataViewer : Form
 		dataTable.Columns.Add("攻略");
 		dataTable.Columns.Add("来源");
 		dataTable.Columns.Add("名称");
+		dataTable.Columns.Add("阶段");
 		dataTable.Columns.Add("进度");
+		dataTable.Columns.Add("进度百分比", typeof(double));
 		dataTable.Columns.Add("完成状态");
 		dataTable.Columns.Add("具体要求");
 		dataTable.Columns.Add("分类/备注");
-		dataTable.Columns.Add("收藏时间");
+		dataTable.Columns.Add("最近进度更新");
 		AddGuideMetadataColumns(dataTable);
 		AddTrackMetadataColumns(dataTable);
 		foreach (TrackedAchievementDisplayRow row in rows)
 		{
-			dataTable.Rows.Add("已收藏", row.HasGuide ? "攻略" : string.Empty, row.SourceLabel, row.Name, row.ProgressText, row.StatusText, row.Requirement, row.ExtraText, row.TrackedAtText, row.GuideName, row.GuideRequirement, row.GuideClass, row.TrackKey, row.TrackKind, row.TrackId, row.Name, row.Requirement, row.TrackClass, row.SourceLabel, row.ProgressText, row.StatusText, row.ExtraText);
+			dataTable.Rows.Add("已收藏", row.HasGuide ? "攻略" : string.Empty, row.SourceLabel, row.Name, row.StageText, row.ProgressText, GetProgressRatioValue(row.ProgressText), row.StatusText, row.Requirement, row.ExtraText, row.LastProgressUpdatedAtText, row.GuideName, row.GuideRequirement, row.GuideClass, row.TrackKey, row.TrackKind, row.TrackId, row.Name, row.Requirement, row.TrackClass, row.SourceLabel, row.ProgressText, row.StatusText, row.ExtraText);
 		}
 		return dataTable;
 	}
@@ -8087,6 +8351,21 @@ internal sealed class FirestoneDataViewer : Form
 		return progress.ToString(CultureInfo.InvariantCulture);
 	}
 
+	private static object GetProgressRatioValue(int progress, int maxProgress)
+	{
+		return (maxProgress > 0) ? ((object)((double)progress / (double)maxProgress)) : DBNull.Value;
+	}
+
+	private static object GetProgressRatioValue(string progressText)
+	{
+		Match match = Regex.Match(progressText ?? string.Empty, "^\\s*(-?\\d+(?:\\.\\d+)?)\\s*/\\s*(-?\\d+(?:\\.\\d+)?)");
+		if (!match.Success || !double.TryParse(match.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var result) || !double.TryParse(match.Groups[2].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var result2) || result2 <= 0.0)
+		{
+			return DBNull.Value;
+		}
+		return result / result2;
+	}
+
 	private static string FormatCompletionRate(int completedCount, int totalCount)
 	{
 		if (totalCount <= 0)
@@ -8669,6 +8948,8 @@ internal sealed class TrackedAchievementEntry
 
 	public string SourceLabel { get; set; }
 
+	public string StageText { get; set; }
+
 	public string ProgressText { get; set; }
 
 	public string StatusText { get; set; }
@@ -8676,6 +8957,8 @@ internal sealed class TrackedAchievementEntry
 	public string ExtraText { get; set; }
 
 	public string TrackedAt { get; set; }
+
+	public string LastProgressUpdatedAt { get; set; }
 }
 internal sealed class TrackedAchievementDisplayRow
 {
@@ -8693,6 +8976,8 @@ internal sealed class TrackedAchievementDisplayRow
 
 	public string SourceLabel { get; set; }
 
+	public string StageText { get; set; }
+
 	public string ProgressText { get; set; }
 
 	public string StatusText { get; set; }
@@ -8700,6 +8985,8 @@ internal sealed class TrackedAchievementDisplayRow
 	public string ExtraText { get; set; }
 
 	public string TrackedAtText { get; set; }
+
+	public string LastProgressUpdatedAtText { get; set; }
 
 	public bool HasGuide { get; set; }
 
@@ -8837,6 +9124,8 @@ internal sealed class OfficialAchievementExportRow
 {
 	public int AchievementId { get; set; }
 
+	public int NextTierId { get; set; }
+
 	public int Progress { get; set; }
 
 	public int Index { get; set; }
@@ -8850,6 +9139,8 @@ internal sealed class OfficialAchievementExportRow
 	public OfficialCategoryReference PrimaryCategory { get; set; }
 
 	public OfficialCategoryReference LeafCategory { get; set; }
+
+	public List<OfficialAchievementExportRow> TierStages { get; set; }
 }
 internal sealed class OfficialCategoryReference
 {
