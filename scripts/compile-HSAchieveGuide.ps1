@@ -154,26 +154,6 @@ if ($LASTEXITCODE -ne 0) {
     throw "Main application compilation failed with exit code $LASTEXITCODE"
 }
 
-$helperArgs = [System.Collections.Generic.List[string]]::new()
-foreach ($argument in @('/target:exe', '/platform:x64', '/langversion:latest', '/utf8output', '/optimize+')) {
-    $helperArgs.Add($argument)
-}
-foreach ($reference in $commonReferences) {
-    $helperArgs.Add($reference)
-}
-if (Test-Path -LiteralPath $generatedIcon) {
-    $helperArgs.Add('/win32icon:' + $generatedIcon)
-}
-$helperOutput = Join-Path $distDir 'ExportMindVisionAchievements.v3.exe'
-$helperArgs.Add('/out:' + $helperOutput)
-$helperArgs.Add((Join-Path $sourceDir 'ExportMindVisionAchievements.cs'))
-
-Write-Host 'Compiling ExportMindVisionAchievements.v3.exe...'
-& $csc $helperArgs.ToArray()
-if ($LASTEXITCODE -ne 0) {
-    throw "Export helper compilation failed with exit code $LASTEXITCODE"
-}
-
 $calibrationSource = Join-Path $dataDir 'official-calibration'
 $calibrationOutput = Join-Path $distDir 'json\official-calibration'
 New-Item -ItemType Directory -Force -Path $calibrationOutput | Out-Null
@@ -186,5 +166,5 @@ foreach ($name in @('README.md', 'README.en.md', 'NOTICE.md', 'LICENSE')) {
 
 Write-Host ''
 Write-Host ('Build complete: ' + $distDir)
-Get-Item -LiteralPath $mainOutput, $helperOutput |
+Get-Item -LiteralPath $mainOutput |
     ForEach-Object { Write-Host ('  ' + $_.Name + '  ' + [Math]::Round($_.Length / 1MB, 2) + ' MB') }

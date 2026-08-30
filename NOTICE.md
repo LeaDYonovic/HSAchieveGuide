@@ -11,8 +11,6 @@ trademarks, artwork, community guides, or linked content.
   data and, when available, calls Firestone's bundled `OverwolfUnitySpy`
   interface by reflection. No Firestone DLL is redistributed here. See the
   [official Firestone repository](https://github.com/Zero-to-Heroes/firestone).
-- The export helper retrieves public achievement reference/configuration data
-  from `static.zerotoheroes.com` when it refreshes runtime achievement data.
 - Community guide text and source links remain attributable to their original
   authors. Inclusion in `data/guide-table.json` does not transfer ownership.
   If an author wants material corrected or removed, please open an issue.
@@ -20,4 +18,3 @@ trademarks, artwork, community guides, or linked content.
 
 This tool is organized and published by community individuals. OpenAI tools
 were used as development assistance.
-

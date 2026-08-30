@@ -18,7 +18,7 @@ Windows 炉石传说成就查看与管理工具。它把官方成就层级、账
 - 查看成就进度、阶段要求、成就点数和关联卡牌收藏。
 - 查看、筛选个人卡牌收藏。
 - 显示本地社区攻略、卡组代码和原始来源链接。
-- 在 Firestone 可用时刷新账号成就与收藏；无法导出时使用随包的官方
+- 重新读取 Firestone 已写入本机的账号成就与收藏，并使用随包的官方
   成就结构作为离线基准。
 - 不包含攻略服务器、攻略上传或管理员审核功能。
 
@@ -26,17 +26,14 @@ Windows 炉石传说成就查看与管理工具。它把官方成就层级、账
 
 - 64 位 Windows 10 或 Windows 11。
 - .NET Framework 4.8（多数 Windows 10/11 电脑已包含或可在系统功能中启用）。
-- 已安装并运行 Firestone；读取账号实时数据时建议同时启动炉石传说。
-- 运行时导出器使用 64 位架构，以匹配当前 Firestone/Overwolf 模组。
+- 已安装并运行 Firestone；更新账号数据时建议同时启动炉石传说。
 
 ## 使用方法
 
 1. 从 Releases 下载发布包并完整解压。
-2. 保持 `HSAchieveGuide.exe` 与 `ExportMindVisionAchievements.v3.exe`
-   在同一目录。
-3. 双击 `HSAchieveGuide.exe`，首次解析数据可能需要 10 至 30 秒。
-4. 如果没有自动找到 Firestone 数据，点击“选择目录”。
-5. 数据目录通常是：
+2. 双击 `HSAchieveGuide.exe`，首次解析数据可能需要 10 至 30 秒。
+3. 如果没有自动找到 Firestone 数据，点击“选择目录”。
+4. 数据目录通常是：
 
    `%APPDATA%\Overwolf\lnknbakkpommmjjdnelmfbjjdbocfpnpbkijjnob`
 
@@ -79,15 +76,12 @@ data/                         构建时嵌入或随包分发的数据
 data/official-calibration/    当前官方成就层级基准
 scripts/                      编译与发布脚本
 src/HSAchieveGuide.cs         主程序
-src/ExportMindVisionAchievements.cs
-                               Firestone 运行时数据导出辅助程序
 ```
 
 ## 数据与隐私
 
 - 程序读取本机 Firestone/炉石传说数据。
 - 不会把账号成就、收藏或本机路径上传到本项目的服务器；本项目没有此类服务器。
-- 刷新辅助程序会访问 `static.zerotoheroes.com` 获取公开成就参考数据。
 - 点击攻略来源时会使用默认浏览器打开第三方网页。
 - 请勿把运行后生成的 `json/mindvision-export/`、日志或目录配置公开提交。
   `.gitignore` 已默认排除这些文件。

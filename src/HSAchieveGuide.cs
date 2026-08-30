@@ -3156,76 +3156,13 @@ internal sealed class FirestoneDataViewer : Form
 		string[] mindVisionExportOutputPaths = GetMindVisionExportOutputPaths();
 		string text = FindLatestExistingPath(mindVisionExportOutputPaths);
 		DateTime? dateTime = TryGetFileWriteTime(text);
-		try
+		progress?.Invoke("重新读取 Firestone 本地缓存...");
+		string details = "安全发行版不再启动外部运行时导出程序；本次刷新将重新读取 Firestone 已写入的本地缓存与日志。";
+		if (!string.IsNullOrWhiteSpace(text))
 		{
-			progress?.Invoke("检测 Hearthstone 进程...");
-			if (Process.GetProcessesByName("Hearthstone").Length == 0)
-			{
-				return MindVisionExportRefreshResult.Create("已跳过", "未检测到 Hearthstone 进程，继续使用现有导出文件。", null, text, dateTime, shouldWarnUser: false);
-			}
-			string[] source = new string[3]
-			{
-				Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ExportMindVisionAchievements.v3.exe"),
-				Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ExportMindVisionAchievements.v2.exe"),
-				Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ExportMindVisionAchievements.exe")
-			};
-			string text2 = source.FirstOrDefault(File.Exists);
-			if (string.IsNullOrWhiteSpace(text2))
-			{
-				return MindVisionExportRefreshResult.Create("已跳过", "未找到 ExportMindVisionAchievements 可执行文件。", "未找到可用导出程序", null, dateTime, shouldWarnUser: true);
-			}
-			Directory.CreateDirectory(_mindVisionExportDir);
-			progress?.Invoke("调用运行时导出器...");
-			DateTime now = DateTime.Now;
-			ProcessStartInfo processStartInfo = new ProcessStartInfo();
-			processStartInfo.FileName = text2;
-			processStartInfo.Arguments = "\"" + _mindVisionExportDir + "\"";
-			processStartInfo.UseShellExecute = false;
-			processStartInfo.CreateNoWindow = true;
-			processStartInfo.WindowStyle = ProcessWindowStyle.Hidden;
-			processStartInfo.RedirectStandardOutput = true;
-			processStartInfo.RedirectStandardError = true;
-			using Process process = Process.Start(processStartInfo);
-			if (process == null)
-			{
-				return MindVisionExportRefreshResult.Create("失败", "导出程序未能成功启动。", text2, text, dateTime, shouldWarnUser: true);
-			}
-			if (!process.WaitForExit(25000))
-			{
-				string text3 = "导出超时，已等待 25 秒。";
-				try
-				{
-					process.Kill();
-					process.WaitForExit(2000);
-				}
-				catch
-				{
-				}
-				text3 = AppendProcessOutput(text3, process.StandardOutput.ReadToEnd(), process.StandardError.ReadToEnd());
-				return MindVisionExportRefreshResult.Create("失败", text3, text2, text, dateTime, shouldWarnUser: true);
-			}
-			string text4 = process.StandardOutput.ReadToEnd();
-			string text5 = process.StandardError.ReadToEnd();
-			string text6 = FindLatestExistingPath(mindVisionExportOutputPaths);
-			DateTime? dateTime2 = TryGetFileWriteTime(text6);
-			if (process.ExitCode != 0)
-			{
-				string text7 = AppendProcessOutput("导出程序退出码: " + process.ExitCode.ToString(CultureInfo.InvariantCulture), text4, text5);
-				return MindVisionExportRefreshResult.Create("失败", text7, text2, text6 ?? text, dateTime2 ?? dateTime, shouldWarnUser: true);
-			}
-			bool flag = dateTime2.HasValue && ((!dateTime.HasValue || dateTime2.Value > dateTime.Value) || dateTime2.Value >= now.AddSeconds(-1.0));
-			if (!flag)
-			{
-				string text8 = AppendProcessOutput("导出程序返回成功，但导出文件时间戳没有更新。", text4, text5);
-				return MindVisionExportRefreshResult.Create("警告", text8, text2, text6 ?? text, dateTime2 ?? dateTime, shouldWarnUser: true);
-			}
-			string text9 = AppendProcessOutput("运行时导出已刷新。", text4, text5);
-			return MindVisionExportRefreshResult.Create("成功", text9, text2, text6, dateTime2, shouldWarnUser: false);
+			details += " 已检测到现有运行时导出数据，将一并读取。";
 		}
-		catch (Exception ex)
-		{
-			return MindVisionExportRefreshResult.Create("失败", "运行时导出异常: " + ex.Message, null, text, dateTime, shouldWarnUser: true);
-		}
+		return MindVisionExportRefreshResult.Create("本地读取", details, null, text, dateTime, shouldWarnUser: false);
 	}
 
 	private List<OfficialCategoryExportRow> LoadOfficialCategoryExports()
@@ -5119,7 +5056,7 @@ internal sealed class FirestoneDataViewer : Form
 		list2.Add("说明:");
 		list2.Add("1. 顶部表格按官方根分类汇总。");
 		list2.Add("2. 打开细分后，可以继续查看一级分类和具体成就。");
-		list2.Add("3. 下方具体成就来自 Firestone 运行时导出与官方分类配置的挂接结果。");
+		list2.Add("3. 下方具体成就来自官方结构基准，并与 Firestone 本地缓存和日志中的账号进度合并。");
 		list2.Add("");
 		list2.Add("具体成就：");
 		List<string> list3 = list2;

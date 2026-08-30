@@ -21,7 +21,7 @@ community-authored guides in one interface.
 - Inspect progress, tier requirements, points, and related cards.
 - Search and filter the local card collection.
 - Read local community guides, copy deck codes, and open original sources.
-- Refresh account data through Firestone when available, with an offline
+- Reload account data already written locally by Firestone, with an offline
   official-achievement baseline as fallback.
 - No guide server, guide upload, or administrator-review functionality.
 
@@ -31,8 +31,6 @@ community-authored guides in one interface.
 - Firestone must be installed; start Hearthstone and Firestone before
   refreshing live account data.
 - Download and fully extract a release, then run `HSAchieveGuide.exe`.
-- Keep `ExportMindVisionAchievements.v3.exe` next to the main executable.
-- The runtime exporter is built for 64-bit Firestone/Overwolf modules.
 
 The usual Firestone data directory is:
 
@@ -53,8 +51,7 @@ Framework reference assemblies.
 ## Privacy and network access
 
 The application reads local Firestone/Hearthstone data. It has no account-data
-upload service. The export helper requests public achievement reference data
-from `static.zerotoheroes.com`; source links open in the default browser.
+upload service. Source links open in the default browser.
 Runtime exports, logs, local paths, and collection files are ignored by Git.
 
 ## License

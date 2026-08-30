@@ -27,7 +27,6 @@ if (Test-Path -LiteralPath $zipPath) {
 New-Item -ItemType Directory -Path (Join-Path $packageDir 'json\official-calibration') -Force | Out-Null
 foreach ($name in @(
     'HSAchieveGuide.exe',
-    'ExportMindVisionAchievements.v3.exe',
     'README.md',
     'README.en.md',
     'NOTICE.md',
@@ -44,4 +43,3 @@ Compress-Archive -LiteralPath $packageDir -DestinationPath $zipPath -Compression
 $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $zipPath
 Write-Host ('Release: ' + $zipPath)
 Write-Host ('SHA256: ' + $hash.Hash)
-
