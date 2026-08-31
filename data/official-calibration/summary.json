@@ -1,5 +1,5 @@
 {
-    "generatedAt":  "2026-08-14T17:08:17+09:00",
+    "generatedAt":  "2026-08-31T17:43:25+09:00",
     "source":  "Hearthstone ACHIEVEMENT DBF tables",
     "filters":  {
                     "included":  [
@@ -18,7 +18,8 @@
                    "categories":  5,
                    "subcategories":  77,
                    "sections":  462,
-                   "achievements":  5438,
+                   "achievements":  5453,
+                   "totalAchievementPoints":  73910,
                    "disabledAchievements":  27,
                    "enabledButUnmappedAchievements":  6
                }
